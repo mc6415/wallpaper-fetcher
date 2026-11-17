@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:path/path.dart' as p;
 import 'package:wallpaper_core/wallpaper_core.dart';
 
 import '../../providers.dart';
@@ -269,19 +271,31 @@ class _PoolChooser extends ConsumerWidget {
   }
 }
 
+/// The command to bind to shortcuts: the launcher's full path when it can be
+/// found, because desktop sessions often don't have ~/.local/bin on PATH.
+String shortcutCommand([Map<String, String>? environment]) {
+  final env = environment ?? Platform.environment;
+  final dirs = [...(env['PATH'] ?? '').split(':'), p.join(env['HOME'] ?? '', '.local', 'bin')];
+  for (final dir in dirs.where((d) => d.isNotEmpty)) {
+    final launcher = File(p.join(dir, 'wallpaper-fetcher'));
+    if (launcher.existsSync()) return launcher.path;
+  }
+  return 'wallpaper-fetcher';
+}
+
 class _ShortcutsCard extends StatelessWidget {
   const _ShortcutsCard();
-
-  static const _commands = [
-    ('wallpaper-fetcher next', 'Next wallpaper on every rotation screen'),
-    ('wallpaper-fetcher previous', 'Back to the previous one'),
-    ('wallpaper-fetcher favourite', "Favourite what's on the main monitor"),
-    ('wallpaper-fetcher next --screen DP-2', 'Just one screen (ids from "wallpaper-fetcher screens")'),
-  ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final cli = shortcutCommand();
+    final commands = [
+      ('$cli next', 'Next wallpaper on every rotation screen'),
+      ('$cli previous', 'Back to the previous one'),
+      ('$cli favourite', "Favourite what's on the main monitor"),
+      ('$cli next --screen DP-2', 'Just one screen (ids from "wallpaper-fetcher screens")'),
+    ];
     return Card.outlined(
       margin: const EdgeInsets.fromLTRB(16, 24, 16, 0),
       child: Padding(
@@ -303,7 +317,15 @@ class _ShortcutsCard extends StatelessWidget {
               'whether or not this app is open, and show a notification if something goes wrong.',
             ),
             const SizedBox(height: 8),
-            for (final (command, what) in _commands)
+            if (cli == 'wallpaper-fetcher')
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  "The wallpaper-fetcher command isn't installed yet; see the README.",
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+              ),
+            for (final (command, what) in commands)
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
