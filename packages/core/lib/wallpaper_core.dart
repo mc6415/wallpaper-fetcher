@@ -2,6 +2,8 @@
 /// Plain Dart, shared by the Flutter app and the command line.
 library;
 
+export 'src/ipc/commands.dart';
+export 'src/ipc/ipc.dart';
 export 'src/library/database.dart' show AppDatabase, ApplyHistoryData, LibraryItem;
 export 'src/library/download_manager.dart';
 export 'src/library/hashing.dart';
@@ -18,12 +20,20 @@ export 'src/models/remote_wallpaper.dart';
 export 'src/net/http_client.dart';
 export 'src/net/rate_limiter.dart';
 export 'src/net/retry_interceptor.dart';
+export 'src/rotation/rotation_config.dart';
+export 'src/rotation/rotation_picker.dart';
+export 'src/rotation/rotation_service.dart';
 export 'src/settings/settings_store.dart';
 export 'src/setters/applier.dart';
 export 'src/setters/linux/desktop_environment.dart';
+export 'src/setters/linux/feh_setter.dart';
+export 'src/setters/linux/gnome_setter.dart';
 export 'src/setters/linux/kde_setter.dart';
 export 'src/setters/linux/linux_setter.dart';
 export 'src/setters/linux/plasma_shell.dart';
+export 'src/setters/linux/tools.dart';
+export 'src/setters/linux/wlroots_setters.dart';
+export 'src/setters/linux/xfce_setter.dart';
 export 'src/setters/wallpaper_setter.dart';
 export 'src/sources/api_keys.dart';
 export 'src/sources/bing/bing_source.dart';
@@ -31,4 +41,6 @@ export 'src/sources/unsplash/unsplash_source.dart';
 export 'src/sources/wallhaven/wallhaven_source.dart';
 export 'src/sources/wikimedia/wikimedia_source.dart';
 export 'src/sources/wallpaper_source.dart';
+export 'src/util/app_paths.dart';
+export 'src/util/notifier.dart';
 export 'src/util/semaphore.dart';

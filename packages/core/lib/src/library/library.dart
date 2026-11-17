@@ -213,6 +213,12 @@ class WallpaperLibrary {
     );
   }
 
+  /// A one-off snapshot of [watch].
+  Future<List<LibraryItem>> items({
+    LibrarySort sort = LibrarySort.newest,
+    LibraryFilter filter = const LibraryFilter(),
+  }) => watch(sort: sort, filter: filter).first;
+
   /// Every tag in the library and how many images have it, most used first.
   /// Tags differing only in case count as one (shown as first seen).
   Stream<List<({String tag, int count})>> watchTags() =>

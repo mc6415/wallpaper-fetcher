@@ -44,11 +44,15 @@ class _ScreenCard extends ConsumerStatefulWidget {
 class _ScreenCardState extends ConsumerState<_ScreenCard> {
   bool _busy = false;
 
+  /// Previous steps back through this screen's history; Next steps forward
+  /// again, or picks a new image from the rotation pool at the newest end.
   Future<void> _step({required bool back}) async {
     setState(() => _busy = true);
     try {
-      final applier = ref.read(servicesProvider).applier;
-      await (back ? applier.previous(widget.target) : applier.next(widget.target));
+      final rotation = ref.read(servicesProvider).rotation;
+      final ids = [widget.target.id];
+      final outcome = await (back ? rotation.previous(targetIds: ids) : rotation.next(targetIds: ids));
+      if (!outcome.changed && mounted) showSnack(context, outcome.message ?? 'Nothing changed.');
     } on Object catch (e) {
       if (mounted) showSnack(context, '$e');
     } finally {
@@ -102,7 +106,7 @@ class _ScreenCardState extends ConsumerState<_ScreenCard> {
                           IconButton(
                             tooltip: 'Next wallpaper',
                             visualDensity: VisualDensity.compact,
-                            onPressed: _busy || !widget.showing.canGoForward ? null : () => _step(back: false),
+                            onPressed: _busy ? null : () => _step(back: false),
                             icon: const Icon(Icons.skip_next),
                           ),
                           if (_busy)

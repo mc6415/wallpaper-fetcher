@@ -9,17 +9,20 @@ plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how it's put togethe
 
 ## Status
 
-**Phase 2 — done.** (Phase 1, the Linux MVP, before it.)
+**Phase 3 — done.** (Phases 1 and 2 before it.)
 
-| | Linux (KDE Plasma) | Other Linux desktops | Windows | Android |
+| | KDE Plasma | Other Linux desktops | Windows | Android |
 |---|---|---|---|---|
 | Browse & download (Wallhaven, Unsplash, Bing, Wikimedia) | ✅ | ✅ | Phase 4 | Phase 5 |
 | Library: favourites, tags, filters, search, folder import | ✅ | ✅ | Phase 4 | Phase 5 |
-| Set wallpaper per monitor, history with Previous/Next | ✅ | Phase 3 | Phase 4 | Phase 5 |
-| Set lock screen | ✅ | Phase 3 | Phase 4 | Phase 5 |
+| Set wallpaper per monitor, Previous/Next history | ✅ | ✅ untested* | Phase 4 | Phase 5 |
+| Set lock screen | ✅ | GNOME, untested* | Phase 4 | Phase 5 |
+| Rotation, tray icon, start on login, command line | ✅ | ✅ untested* | Phase 4 | Phase 5 |
 
-Coming next (Phase 3): automatic rotation, a tray icon, start on login, command-line
-controls for keyboard shortcuts, and other Linux desktops.
+\* Built from each desktop tool's documentation and covered by tests against sample
+output, but not yet run on a real GNOME, Cinnamon, MATE, Xfce, Sway, Hyprland or feh setup.
+
+Coming next (Phase 4): Windows.
 
 ## Using it
 
@@ -35,6 +38,37 @@ controls for keyboard shortcuts, and other Linux desktops.
    leave out of rotation, and filter or search the library by any of these.
 5. **Import a folder** (⋮ menu) copies or moves existing images into the library;
    **History** lists everything you've set.
+6. **Rotation**: switch on automatic changes, pick how often (15 minutes to daily) and
+   from what (whole library, favourites, a tag, a source, or today's Bing / Wikimedia
+   picture), shuffled or in order, and which screens. Each screen gets a different image.
+
+### Tray and start on login
+
+Closing the window leaves Wallpaper Fetcher in the tray (Settings can change that), where
+its menu has Next, Previous, Add to favourites (per screen), Pause rotation, Open and Quit.
+**Settings → Start when I log in** adds an autostart entry that starts it hidden in the
+tray. Opening the app again while it's running brings the existing window forward.
+
+### Command line and keyboard shortcuts
+
+```sh
+wallpaper-fetcher next                     # next wallpaper on every rotation screen
+wallpaper-fetcher previous --screen DP-2   # back one, on one screen
+wallpaper-fetcher favourite                # favourite what's on the main monitor
+wallpaper-fetcher status                   # what's on each screen, and the schedule
+wallpaper-fetcher screens                  # screen ids for --screen
+wallpaper-fetcher apply wallhaven/wallhaven_abc.jpg --all
+wallpaper-fetcher pause | resume | show | quit
+```
+
+It talks to the running app over a socket in `$XDG_RUNTIME_DIR`, or opens the library
+itself when the app isn't running. Run from a keyboard shortcut (no terminal), it reports
+problems and favourites as desktop notifications. In KDE: System Settings → Keyboard →
+Shortcuts → Add New → Command or Script.
+
+Build it with `dart build cli -t bin/wallpaper_fetcher.dart -o ../../build/cli` in
+`packages/cli`; the executable is `build/cli/bundle/bin/wallpaper_fetcher` (packaged as
+`wallpaper-fetcher` in Phase 6).
 
 Images you drop into the library folder yourself are picked up on the next start or with
 **Rescan**.
@@ -71,8 +105,13 @@ Not included: **Pexels** (its API guidelines forbid wallpaper apps) and **NASA A
   D-Bus; the lock screen through `kscreenlockerrc` (`kwriteconfig6`). Monitor names and
   real resolutions come from `kscreen-doctor`. If a monitor is set to a plain colour,
   setting an image switches it to an image wallpaper.
-- **Other desktops**: detected, but setting wallpapers isn't implemented yet (Phase 3).
-  Browsing and the library still work.
+- **GNOME, Cinnamon, MATE**: `gsettings`; one wallpaper across all monitors (GNOME also
+  sets the lock screen). The tray needs GNOME's AppIndicator extension.
+- **Xfce**: `xfconf-query`, per monitor, every workspace.
+- **Sway**: `swaymsg output … bg`, per output; lasts until Sway reloads its config.
+- **Hyprland**: `swww`/`awww` if its daemon is running, otherwise `hyprpaper` via `hyprctl`.
+- **Other X11 window managers**: `feh`, if installed (other monitors keep their images
+  from `~/.fehbg`).
 
 ## Development
 
@@ -88,5 +127,6 @@ dart test                     # core tests (no Flutter needed)
 dart run build_runner build   # after changing the database tables
 ```
 
-Layout: `packages/core` is plain Dart (sources, library, wallpaper setters) shared by the
-Flutter app in `packages/app` and the command line coming in Phase 3.
+Layout: `packages/core` is plain Dart (sources, library, rotation, wallpaper setters,
+command socket) shared by the Flutter app in `packages/app` and the command line in
+`packages/cli` (`dart test` there too).

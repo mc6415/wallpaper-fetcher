@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:wallpaper_core/wallpaper_core.dart';
 
+import 'platform/autostart.dart';
+import 'platform/desktop.dart';
 import 'platform/linux_appearance.dart';
 import 'services.dart';
 
@@ -281,3 +283,40 @@ class AppearanceNotifier extends Notifier<Appearance> {
 }
 
 final appearanceProvider = NotifierProvider<AppearanceNotifier, Appearance>(AppearanceNotifier.new);
+
+// --- Rotation and desktop integration ----------------------------------------
+
+/// The tray, window and command socket; null in tests and on Android.
+final desktopProvider = Provider<DesktopIntegration?>((ref) => null);
+
+final rotationStateProvider = StreamProvider<RotationState>((ref) async* {
+  final rotation = ref.watch(servicesProvider).rotation;
+  yield rotation.state;
+  yield* rotation.changes;
+});
+
+/// Close the window to the tray (true) or quit (false).
+class KeepInTrayNotifier extends Notifier<bool> {
+  @override
+  bool build() => ref.watch(servicesProvider).initialSettings[SettingsKeys.keepInTray] != 'false';
+
+  Future<void> set(bool keep) async {
+    state = keep;
+    ref.read(desktopProvider)?.keepInTray = keep;
+    await ref.read(servicesProvider).settings.set(SettingsKeys.keepInTray, keep ? null : 'false');
+  }
+}
+
+final keepInTrayProvider = NotifierProvider<KeepInTrayNotifier, bool>(KeepInTrayNotifier.new);
+
+class AutostartNotifier extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() => Autostart.isEnabled();
+
+  Future<void> set(bool enabled) async {
+    await Autostart.setEnabled(enabled);
+    state = AsyncData(enabled);
+  }
+}
+
+final autostartProvider = AsyncNotifierProvider<AutostartNotifier, bool>(AutostartNotifier.new);

@@ -77,6 +77,10 @@ desktop monitors and the Fold's screens use the same model.
 - Built in from the start: CLI controls, and system accent colour (XDG portal on Linux,
   Material You on Android).
 - Not wanted: a shared library across OSes, web builds, usage analytics.
+- Phase 3: one rotation schedule for all chosen screens, each getting a different image;
+  shape match beats variety when picking. Next after Previous moves forward through
+  history before picking anew. The CLI talks to the running app over a Unix socket and
+  falls back to opening the library itself; the same `CommandHandler` serves both.
 - Phase 2: Wikimedia Commons Picture of the Day replaces NASA APOD (APOD API broken);
   Wallhaven searches default to the General category only. Pexels dropped: its API
   guidelines forbid wallpaper apps. Unsplash treats setting a wallpaper as a download,
@@ -94,7 +98,7 @@ desktop monitors and the Fold's screens use the same model.
 | path_provider, file_selector, crypto | App folders, folder picker, duplicate detection | 1 |
 | mocktail | Tests | 1 |
 | flutter_secure_storage | API keys (KWallet on KDE) | 2 |
-| tray_manager + window_manager | Tray icon, hide to tray on close | 3 |
+| tray_manager 0.9 + window_manager 0.7 | Tray icon, hide to tray on close (their new nativeapi-based APIs, not the deprecated `legacy` bridge) | 3 |
 | args | CLI parsing | 3 |
 | win32 | Windows wallpaper COM API | 4 |
 | dynamic_color, workmanager | Material You, Android background rotation | 5 |

@@ -36,6 +36,7 @@ class AppServices {
     required this.downloads,
     required this.setter,
     required this.applier,
+    required this.rotation,
     required this.thumbnails,
     required this.initialSettings,
     required this.logDirectory,
@@ -56,6 +57,7 @@ class AppServices {
   final DownloadManager downloads;
   final WallpaperSetter setter;
   final WallpaperApplier applier;
+  final RotationService rotation;
   final ThumbnailCache thumbnails;
 
   /// Settings as they were at startup, so providers can start synchronously.
@@ -127,6 +129,25 @@ class AppServices {
       unawaited(startupRescan.then<void>((_) {}, onError: (Object _) {}));
     }
 
+    final sources = <String, WallpaperSource>{
+      WallhavenSource.sourceId: WallhavenSource(dio: dio),
+      UnsplashSource.sourceId: UnsplashSource(dio: dio, keys: apiKeys),
+      BingSource.sourceId: BingSource(dio: dio, market: bingMarket(Platform.localeName)),
+      WikimediaSource.sourceId: WikimediaSource(dio: dio),
+    };
+    final downloads = DownloadManager(dio: dio, library: library);
+    final applier = WallpaperApplier(setter: setter, library: library, history: history);
+    final rotation = RotationService(
+      setter: setter,
+      applier: applier,
+      library: library,
+      history: history,
+      settings: settings,
+      downloads: downloads,
+      sources: sources,
+    );
+    await rotation.load();
+
     _log.info('Started. Setter: ${setter.name}. Library: ${library.root ?? '(not chosen)'}');
     return AppServices(
       db: db,
@@ -134,17 +155,13 @@ class AppServices {
       library: library,
       history: history,
       dio: dio,
-      sources: {
-        WallhavenSource.sourceId: WallhavenSource(dio: dio),
-        UnsplashSource.sourceId: UnsplashSource(dio: dio, keys: apiKeys),
-        BingSource.sourceId: BingSource(dio: dio, market: bingMarket(Platform.localeName)),
-        WikimediaSource.sourceId: WikimediaSource(dio: dio),
-      },
+      sources: sources,
       apiKeys: apiKeys,
       keyStore: keyStore,
-      downloads: DownloadManager(dio: dio, library: library),
+      downloads: downloads,
       setter: setter,
-      applier: WallpaperApplier(setter: setter, library: library, history: history),
+      applier: applier,
+      rotation: rotation,
       thumbnails: ThumbnailCache(p.join(cache.path, 'thumbnails')),
       initialSettings: initialSettings,
       logDirectory: logDirectory,

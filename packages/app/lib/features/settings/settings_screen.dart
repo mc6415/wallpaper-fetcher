@@ -229,6 +229,23 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 trailing: CircleAvatar(radius: 12, backgroundColor: theme.colorScheme.primary),
               ),
+              if (ref.watch(desktopProvider) != null) ...[
+                header('Desktop'),
+                SwitchListTile(
+                  secondary: const Icon(Icons.login),
+                  title: const Text('Start when I log in'),
+                  subtitle: const Text('Starts hidden in the tray so rotation keeps going.'),
+                  value: ref.watch(autostartProvider).value ?? false,
+                  onChanged: (on) => ref.read(autostartProvider.notifier).set(on),
+                ),
+                SwitchListTile(
+                  secondary: const Icon(Icons.inbox_outlined),
+                  title: const Text('Keep running in the tray when closed'),
+                  subtitle: const Text('Otherwise closing the window quits, and rotation stops.'),
+                  value: ref.watch(keepInTrayProvider),
+                  onChanged: (on) => ref.read(keepInTrayProvider.notifier).set(on),
+                ),
+              ],
               header('Setting wallpapers'),
               ListTile(
                 leading: const Icon(Icons.desktop_windows_outlined),
@@ -245,7 +262,7 @@ class SettingsScreen extends ConsumerWidget {
               const ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('Wallpaper Fetcher'),
-                subtitle: Text('Version 0.2.0'),
+                subtitle: Text('Version 0.3.0'),
               ),
               ListTile(
                 leading: const Icon(Icons.description_outlined),

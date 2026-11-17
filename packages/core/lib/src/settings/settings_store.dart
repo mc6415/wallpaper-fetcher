@@ -15,6 +15,19 @@ abstract final class SettingsKeys {
   /// Comma-separated source ids with a key in the system keyring, so the
   /// keyring is only touched (and possibly asks to be unlocked) when needed.
   static const savedApiKeys = 'apiKeys.saved';
+
+  /// [RotationConfig] as JSON.
+  static const rotationConfig = 'rotation.config';
+  static const rotationPaused = 'rotation.paused';
+
+  /// When rotation last changed the wallpaper (ISO 8601, UTC).
+  static const rotationLastRun = 'rotation.lastRun';
+
+  /// Key of the daily picture last applied, so it isn't applied twice.
+  static const rotationDailyLast = 'rotation.daily.last';
+
+  /// `false` to quit instead of hiding to the tray when the window closes.
+  static const keepInTray = 'desktop.keepInTray';
 }
 
 /// String key/value settings stored in the library database.

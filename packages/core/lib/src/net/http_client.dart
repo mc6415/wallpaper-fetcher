@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 
 import 'retry_interceptor.dart';
 
-const defaultUserAgent = 'WallpaperFetcher/0.2 (Dart)';
+const defaultUserAgent = 'WallpaperFetcher/0.3 (Dart)';
 
 Dio createHttpClient({String userAgent = defaultUserAgent}) {
   final dio = Dio(

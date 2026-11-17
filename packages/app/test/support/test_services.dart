@@ -85,6 +85,8 @@ class TestEnv {
     final history = WallpaperHistory(db, settings);
     final apiKeys = ApiKeys();
     final keyStore = FakeKeyStore();
+    final downloads = DownloadManager(dio: dio, library: library);
+    final applier = WallpaperApplier(setter: setter, library: library, history: history);
     final services = AppServices(
       db: db,
       settings: settings,
@@ -99,9 +101,18 @@ class TestEnv {
       },
       apiKeys: apiKeys,
       keyStore: keyStore,
-      downloads: DownloadManager(dio: dio, library: library),
+      downloads: downloads,
       setter: setter,
-      applier: WallpaperApplier(setter: setter, library: library, history: history),
+      applier: applier,
+      rotation: RotationService(
+        setter: setter,
+        applier: applier,
+        library: library,
+        history: history,
+        settings: settings,
+        downloads: downloads,
+        sources: const {},
+      ),
       thumbnails: ThumbnailCache(p.join(temp.path, 'thumbs')),
       initialSettings: const {SettingsKeys.minResolution: '3840x2160'},
       logDirectory: p.join(temp.path, 'logs'),

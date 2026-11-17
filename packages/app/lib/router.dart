@@ -8,6 +8,7 @@ import 'features/browse/remote_preview_screen.dart';
 import 'features/library/history_screen.dart';
 import 'features/library/library_detail_screen.dart';
 import 'features/library/library_screen.dart';
+import 'features/rotation/rotation_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/welcome/welcome_screen.dart';
 import 'providers.dart';
@@ -59,6 +60,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
+            routes: [GoRoute(path: '/rotation', builder: (_, _) => const RotationScreen())],
+          ),
+          StatefulShellBranch(
             routes: [GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen())],
           ),
         ],
@@ -76,6 +80,7 @@ class AppShell extends StatelessWidget {
   static const _destinations = [
     (icon: Icons.explore_outlined, selected: Icons.explore, label: 'Browse'),
     (icon: Icons.photo_library_outlined, selected: Icons.photo_library, label: 'Library'),
+    (icon: Icons.autorenew, selected: Icons.autorenew, label: 'Rotation'),
     (icon: Icons.settings_outlined, selected: Icons.settings, label: 'Settings'),
   ];
 

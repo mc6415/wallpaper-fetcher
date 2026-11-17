@@ -29,6 +29,24 @@ class WallpaperApplier {
     if (!fromHistory) await history.resetCursors(ids);
   }
 
+  /// Different images on different targets, in one call to the desktop (on
+  /// KDE both monitors change together).
+  Future<void> applyMany(Map<DisplayTarget, LibraryItem> assignments, {FitMode fit = FitMode.fill}) async {
+    if (assignments.isEmpty) return;
+    await setter.apply([
+      for (final MapEntry(key: target, value: item) in assignments.entries)
+        Assignment(target: target, imagePath: library.absolutePath(item), fit: fit),
+    ]);
+    final byItem = <int, (LibraryItem, List<String>)>{};
+    for (final MapEntry(key: target, value: item) in assignments.entries) {
+      (byItem[item.id] ??= (item, <String>[])).$2.add(target.id);
+    }
+    for (final (item, ids) in byItem.values) {
+      await library.recordApplied(item, ids, fit: fit);
+      await history.resetCursors(ids);
+    }
+  }
+
   /// Puts the previous image back on [target]. Null if there's nothing older.
   Future<LibraryItem?> previous(DisplayTarget target) => _step(target, back: true);
 

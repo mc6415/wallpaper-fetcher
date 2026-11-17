@@ -47,9 +47,10 @@ String setupLogging({
   required String directory,
   Level level = Level.INFO,
   bool echoToConsole = false,
+  String fileName = 'wallpaper_fetcher.log',
 }) {
   Directory(directory).createSync(recursive: true);
-  final file = RotatingLogFile(p.join(directory, 'wallpaper_fetcher.log'));
+  final file = RotatingLogFile(p.join(directory, fileName));
   Logger.root.level = level;
   _subscription?.cancel();
   _subscription = Logger.root.onRecord.listen((r) {

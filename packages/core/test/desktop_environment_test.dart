@@ -35,10 +35,15 @@ void main() {
     expect(detectLinuxEnvironment(const {}).session, SessionType.unknown);
   });
 
-  test('only KDE gets a real setter so far', () {
-    expect(createLinuxSetter(environment: {'XDG_CURRENT_DESKTOP': 'KDE'}), isA<KdeSetter>());
-    final gnome = createLinuxSetter(environment: {'XDG_CURRENT_DESKTOP': 'GNOME'});
-    expect(gnome, isA<UnsupportedSetter>());
-    expect(gnome.name, 'GNOME');
+  test('each desktop gets its setter; unknown X11 uses feh only if installed', () {
+    Type setterFor(Map<String, String> env) => createLinuxSetter(environment: env).runtimeType;
+    expect(setterFor({'XDG_CURRENT_DESKTOP': 'KDE'}), KdeSetter);
+    expect(setterFor({'XDG_CURRENT_DESKTOP': 'GNOME'}), GnomeSetter);
+    expect(createLinuxSetter(environment: {'XDG_CURRENT_DESKTOP': 'X-Cinnamon'}).name, 'Cinnamon');
+    expect(createLinuxSetter(environment: {'XDG_CURRENT_DESKTOP': 'MATE'}).name, 'MATE');
+    expect(setterFor({'XDG_CURRENT_DESKTOP': 'XFCE'}), XfceSetter);
+    expect(setterFor({'SWAYSOCK': '/run/sway'}), SwaySetter);
+    expect(setterFor({'HYPRLAND_INSTANCE_SIGNATURE': 'x'}), HyprlandSetter);
+    expect(setterFor({'XDG_SESSION_TYPE': 'x11', 'PATH': '/nonexistent'}), UnsupportedSetter);
   });
 }
