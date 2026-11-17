@@ -1,0 +1,9 @@
+name: wallpaper_fetcher_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.14.0
+
+workspace:
+  - packages/core
+  - packages/app

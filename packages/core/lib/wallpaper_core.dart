@@ -1,0 +1,29 @@
+/// Wallpaper Fetcher's core: sources, the library, and wallpaper setters.
+/// Plain Dart, shared by the Flutter app and the command line.
+library;
+
+export 'src/library/database.dart' show AppDatabase, ApplyHistoryData, LibraryItem;
+export 'src/library/download_manager.dart';
+export 'src/library/hashing.dart';
+export 'src/library/image_header.dart';
+export 'src/library/library.dart';
+export 'src/library/library_layout.dart';
+export 'src/library/sidecar.dart';
+export 'src/logging/log_setup.dart';
+export 'src/models/attribution.dart';
+export 'src/models/display_target.dart';
+export 'src/models/orientation.dart';
+export 'src/models/remote_wallpaper.dart';
+export 'src/net/http_client.dart';
+export 'src/net/rate_limiter.dart';
+export 'src/net/retry_interceptor.dart';
+export 'src/settings/settings_store.dart';
+export 'src/setters/applier.dart';
+export 'src/setters/linux/desktop_environment.dart';
+export 'src/setters/linux/kde_setter.dart';
+export 'src/setters/linux/linux_setter.dart';
+export 'src/setters/linux/plasma_shell.dart';
+export 'src/setters/wallpaper_setter.dart';
+export 'src/sources/wallhaven/wallhaven_source.dart';
+export 'src/sources/wallpaper_source.dart';
+export 'src/util/semaphore.dart';

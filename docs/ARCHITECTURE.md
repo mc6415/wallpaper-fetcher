@@ -1,0 +1,100 @@
+# Architecture
+
+Approved in Phase 0 (2026-11-17). See `PROJECT_BRIEF.md` for the full requirements.
+
+## Identity
+- App name: **Wallpaper Fetcher**
+- Android application ID / Linux application ID: `dev.mcoombes.wallpaperfetcher`
+
+## Layout
+
+Three packages in one Dart workspace. The command line has to work when the app isn't
+running, so everything it relies on lives in a plain-Dart `core` package with no Flutter
+imports.
+
+```
+wallpaper-fetcher/
+├── PROJECT_BRIEF.md
+├── README.md
+├── pubspec.yaml                  # workspace root
+├── docs/
+├── packages/
+│   ├── core/                     # plain Dart: shared by app and CLI
+│   │   ├── lib/src/
+│   │   │   ├── models/           # wallpaper, library item, display target, credits
+│   │   │   ├── sources/          # WallpaperSource + wallhaven/ unsplash/ pexels/ bing/ apod/
+│   │   │   ├── library/          # drift database, rescan, JSON sidecars, duplicate checks
+│   │   │   ├── setters/          # WallpaperSetter + linux/ (detection, kde, gnome, ...) + windows/
+│   │   │   ├── rotation/         # next image per target, history
+│   │   │   ├── net/              # HTTP client, rate limiting, retries
+│   │   │   ├── settings/
+│   │   │   └── ipc/              # CLI <-> running tray app
+│   │   └── test/fixtures/        # saved API responses
+│   ├── cli/                      # wallpaper-fetcher next|previous|favourite|apply|status (Phase 3)
+│   └── app/                      # Flutter app
+│       ├── lib/features/         # browse/ library/ detail/ rotation/ settings/
+│       ├── lib/platform/         # Android channel, tray, accent colour
+│       └── android/.../WallpaperChannel.kt
+└── .github/workflows/            # Phase 6
+```
+
+- The CLI forwards commands to the tray app when it is running; otherwise it does the work
+  itself through `core`.
+- The database stores file paths relative to the library folder, so moving the library is a
+  plain file move.
+
+## Core interfaces
+
+```dart
+abstract interface class WallpaperSource {
+  String get id;                        // 'wallhaven', 'unsplash', 'bing', ...
+  String get name;
+  SourceCapabilities get capabilities;  // search? orientation? colour? daily? needs a key?
+
+  Future<SourcePage> search(SearchQuery query, {String? cursor});
+  Future<DownloadTicket> prepareDownload(RemoteWallpaper w); // URL, headers, fuller metadata;
+}                                                            // Unsplash's download ping goes here
+
+abstract interface class WallpaperSetter {
+  Future<List<DisplayTarget>> targets();             // re-read every time; monitors change
+  Future<SetterCapabilities> capabilities();         // per-target? lock screen? fit modes?
+  Future<void> apply(List<Assignment> assignments);  // all targets in one go
+}
+```
+
+A `DisplayTarget` is anything that can show a wallpaper (a monitor, the lock screen, a phone
+screen) with its real pixel size. An `Assignment` pairs a target with an image, a fit mode and
+an optional focus point. "A different image per screen" is a list of assignments, so the two
+desktop monitors and the Fold's screens use the same model.
+
+## Decisions
+- Desktop default: a different image per monitor. Default minimum resolution 3840x2160.
+- Fold: a separate image per screen if Samsung's undocumented cover-screen flag works
+  (tested at the start of Phase 5); otherwise one image with a per-screen crop.
+  Android's public API (checked against SDK 36 and 37) only offers `FLAG_SYSTEM` and
+  `FLAG_LOCK`.
+- Desktop rotation runs from the tray icon.
+- Built in from the start: CLI controls, and system accent colour (XDG portal on Linux,
+  Material You on Android).
+- Not wanted: a shared library across OSes, web builds, usage analytics.
+
+## Packages (maintenance re-checked when each phase starts)
+
+| Package | Purpose | Phase |
+|---|---|---|
+| flutter_riverpod | App state | 1 |
+| go_router | Navigation | 1 |
+| drift + drift_flutter | SQLite library database | 1 |
+| dio | Downloads with progress/cancel, rate limiting, retries | 1 |
+| dbus | KDE Plasma scripting, XDG portal (accent colour) | 1 |
+| path_provider, file_selector, crypto | App folders, folder picker, duplicate detection | 1 |
+| mocktail | Tests | 1 |
+| flutter_secure_storage | API keys (KWallet on KDE) | 2 |
+| tray_manager + window_manager | Tray icon, hide to tray on close | 3 |
+| args | CLI parsing | 3 |
+| win32 | Windows wallpaper COM API | 4 |
+| dynamic_color, workmanager | Material You, Android background rotation | 5 |
+
+## Known risks
+1. Fold cover screen relies on an undocumented Samsung flag (Phase 5).
+2. API key storage on KDE needs KWallet's Secret Service to be enabled (check in Phase 2).

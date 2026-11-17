@@ -1,0 +1,350 @@
+import 'dart:io';
+
+import 'package:drift/drift.dart';
+import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
+
+import '../models/orientation.dart';
+import '../settings/settings_store.dart';
+import 'database.dart';
+import 'hashing.dart';
+import 'image_header.dart';
+import 'library_layout.dart';
+import 'sidecar.dart';
+
+final _log = Logger('Library');
+
+enum LibrarySort {
+  newest('Newest first'),
+  oldest('Oldest first'),
+  lastUsed('Recently used'),
+  mostUsed('Most used'),
+  resolution('Highest resolution');
+
+  const LibrarySort(this.label);
+  final String label;
+}
+
+final class RescanResult {
+  const RescanResult({
+    this.added = 0,
+    this.moved = 0,
+    this.removed = 0,
+    this.skipped = 0,
+  });
+
+  /// New images found in the folder.
+  final int added;
+
+  /// Known images found at a different path.
+  final int moved;
+
+  /// Entries whose file has gone.
+  final int removed;
+
+  /// Unreadable images and duplicates of images already in the library.
+  final int skipped;
+
+  bool get changed => added + moved + removed > 0;
+
+  @override
+  String toString() =>
+      'RescanResult(added: $added, moved: $moved, removed: $removed, skipped: $skipped)';
+}
+
+class LibraryException implements Exception {
+  LibraryException(this.message, {this.cause});
+
+  final String message;
+  final Object? cause;
+
+  @override
+  String toString() => message;
+}
+
+/// The downloaded wallpapers: files in the library folder plus their rows in
+/// the database. Paths are stored relative to the folder.
+class WallpaperLibrary {
+  WallpaperLibrary(this._db, this._settings);
+
+  final AppDatabase _db;
+  final SettingsStore _settings;
+  String? _root;
+
+  /// The library folder, or null before the user has chosen one.
+  String? get root => _root;
+
+  String get _requireRoot =>
+      _root ?? (throw LibraryException('No library folder has been chosen yet.'));
+
+  Future<void> load() async {
+    _root = await _settings.get(SettingsKeys.libraryRoot);
+  }
+
+  /// Points the library at [path] without moving anything. Run [rescan] after.
+  Future<void> setRoot(String path) async {
+    final normalised = p.normalize(p.absolute(path));
+    await Directory(normalised).create(recursive: true);
+    await _settings.set(SettingsKeys.libraryRoot, normalised);
+    _root = normalised;
+  }
+
+  String absolutePath(LibraryItem item) => absoluteFor(item.relativePath);
+
+  String absoluteFor(String relativePath) =>
+      p.joinAll([_requireRoot, ...p.posix.split(relativePath)]);
+
+  Stream<List<LibraryItem>> watch({LibrarySort sort = LibrarySort.newest}) =>
+      (_db.select(_db.wallpapers)..orderBy(_ordering(sort))).watch();
+
+  List<OrderClauseGenerator<$WallpapersTable>> _ordering(LibrarySort sort) =>
+      switch (sort) {
+        LibrarySort.newest => [
+          (t) => OrderingTerm.desc(t.addedAt),
+          (t) => OrderingTerm.desc(t.id),
+        ],
+        LibrarySort.oldest => [
+          (t) => OrderingTerm.asc(t.addedAt),
+          (t) => OrderingTerm.asc(t.id),
+        ],
+        LibrarySort.lastUsed => [
+          (t) => OrderingTerm(
+            expression: t.lastAppliedAt,
+            mode: OrderingMode.desc,
+            nulls: NullsOrder.last,
+          ),
+          (t) => OrderingTerm.desc(t.addedAt),
+        ],
+        LibrarySort.mostUsed => [
+          (t) => OrderingTerm.desc(t.applyCount),
+          (t) => OrderingTerm.desc(t.addedAt),
+        ],
+        LibrarySort.resolution => [
+          (t) => OrderingTerm.desc(t.width * t.height),
+          (t) => OrderingTerm.desc(t.addedAt),
+        ],
+      };
+
+  /// `source:sourceId` of everything in the library, for "already downloaded"
+  /// badges.
+  Stream<Set<String>> watchDownloadedKeys() {
+    final w = _db.wallpapers;
+    final query = _db.selectOnly(w)..addColumns([w.source, w.sourceId]);
+    return query.watch().map(
+      (rows) => {for (final r in rows) '${r.read(w.source)}:${r.read(w.sourceId)}'},
+    );
+  }
+
+  Future<LibraryItem?> byId(int id) =>
+      (_db.select(_db.wallpapers)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  Stream<LibraryItem?> watchById(int id) =>
+      (_db.select(_db.wallpapers)..where((t) => t.id.equals(id))).watchSingleOrNull();
+
+  Future<LibraryItem?> bySource(String source, String sourceId) =>
+      (_db.select(_db.wallpapers)
+            ..where((t) => t.source.equals(source) & t.sourceId.equals(sourceId)))
+          .getSingleOrNull();
+
+  Future<LibraryItem?> byHash(String sha256) =>
+      (_db.select(_db.wallpapers)
+            ..where((t) => t.sha256.equals(sha256))
+            ..limit(1))
+          .getSingleOrNull();
+
+  Future<LibraryItem> insert(
+    Sidecar meta, {
+    required String relativePath,
+    required int width,
+    required int height,
+    required int fileSize,
+    required String sha256,
+  }) async {
+    final a = meta.attribution;
+    final id = await _db
+        .into(_db.wallpapers)
+        .insert(
+          WallpapersCompanion.insert(
+            source: meta.source,
+            sourceId: meta.sourceId,
+            relativePath: relativePath,
+            width: width,
+            height: height,
+            orientation: WallpaperOrientation.of(width, height),
+            fileSize: fileSize,
+            sha256: sha256,
+            addedAt: meta.downloadedAt ?? DateTime.now(),
+            sourcePageUrl: Value(meta.pageUrl),
+            downloadUrl: Value(meta.downloadUrl),
+            title: Value(meta.title),
+            authorName: Value(a.authorName),
+            authorUrl: Value(a.authorUrl),
+            licence: Value(a.licence),
+            creditLine: Value(a.creditLine),
+            tags: Value(meta.tags),
+            dominantColour: Value(meta.dominantColour),
+          ),
+        );
+    return (await byId(id))!;
+  }
+
+  /// Deletes the image, its sidecar and its database entry.
+  Future<void> delete(LibraryItem item) async {
+    final path = absolutePath(item);
+    try {
+      final image = File(path);
+      if (await image.exists()) await image.delete();
+    } on FileSystemException catch (e) {
+      throw LibraryException("Couldn't delete ${p.basename(path)}.", cause: e);
+    }
+    try {
+      final sidecar = File(LibraryLayout.sidecarFor(path));
+      if (await sidecar.exists()) await sidecar.delete();
+    } on FileSystemException catch (e) {
+      _log.warning('Left a sidecar behind for $path: $e');
+    }
+    await (_db.delete(_db.wallpapers)..where((t) => t.id.equals(item.id))).go();
+  }
+
+  Future<void> recordApplied(LibraryItem item, Iterable<String> targetIds) =>
+      _db.transaction(() async {
+        final now = DateTime.now();
+        for (final target in targetIds) {
+          await _db
+              .into(_db.applyHistory)
+              .insert(
+                ApplyHistoryCompanion.insert(
+                  wallpaperId: Value(item.id),
+                  appliedAt: now,
+                  target: target,
+                ),
+              );
+        }
+        await (_db.update(_db.wallpapers)..where((t) => t.id.equals(item.id)))
+            .write(
+              WallpapersCompanion.custom(
+                lastAppliedAt: Variable(now),
+                applyCount: _db.wallpapers.applyCount + const Constant(1),
+              ),
+            );
+      });
+
+  /// Brings the database in line with the folder: adds images that appeared,
+  /// follows images that moved, and drops entries whose file is gone.
+  Future<RescanResult> rescan() async {
+    final root = _requireRoot;
+    final dir = Directory(root);
+    if (!await dir.exists()) {
+      throw LibraryException('The library folder $root no longer exists.');
+    }
+
+    final rows = await _db.select(_db.wallpapers).get();
+    final byPath = {for (final r in rows) r.relativePath: r};
+    final seen = <String>{};
+    final newFiles = <String>[];
+
+    final entities = dir
+        .list(recursive: true, followLinks: false)
+        .handleError((Object e) => _log.warning('Skipping during rescan: $e'));
+    await for (final entity in entities) {
+      if (entity is! File || !LibraryLayout.isImage(entity.path)) continue;
+      final relative = LibraryLayout.toStored(p.relative(entity.path, from: root));
+      if (relative.split('/').any((part) => part.startsWith('.'))) continue;
+      if (byPath.containsKey(relative)) {
+        seen.add(relative);
+      } else {
+        newFiles.add(relative);
+      }
+    }
+
+    final missingByHash = {
+      for (final r in rows)
+        if (!seen.contains(r.relativePath)) r.sha256: r,
+    };
+    var added = 0, moved = 0, skipped = 0;
+
+    for (final relative in newFiles..sort()) {
+      final path = absoluteFor(relative);
+      try {
+        final hash = await hashFile(path);
+        final movedRow = missingByHash.remove(hash);
+        if (movedRow != null) {
+          await (_db.update(_db.wallpapers)..where((t) => t.id.equals(movedRow.id)))
+              .write(WallpapersCompanion(relativePath: Value(relative)));
+          moved++;
+          continue;
+        }
+        if (await byHash(hash) != null) {
+          skipped++; // a copy of something already in the library
+          continue;
+        }
+        final size = await readImageSizeFromFile(path);
+        if (size == null) {
+          _log.warning("Can't read image size of $relative; skipping");
+          skipped++;
+          continue;
+        }
+        var meta = await Sidecar.read(LibraryLayout.sidecarFor(path));
+        if (meta == null || await bySource(meta.source, meta.sourceId) != null) {
+          meta = Sidecar.local(hash);
+        }
+        await insert(
+          meta,
+          relativePath: relative,
+          width: size.width,
+          height: size.height,
+          fileSize: await File(path).length(),
+          sha256: hash,
+        );
+        added++;
+      } on FileSystemException catch (e) {
+        _log.warning('Skipping $relative: $e');
+        skipped++;
+      }
+    }
+
+    for (final gone in missingByHash.values) {
+      await (_db.delete(_db.wallpapers)..where((t) => t.id.equals(gone.id))).go();
+    }
+
+    final result = RescanResult(
+      added: added,
+      moved: moved,
+      removed: missingByHash.length,
+      skipped: skipped,
+    );
+    _log.info('Rescanned $root: $result');
+    return result;
+  }
+
+  /// Moves every image (and its sidecar) to [newRoot] and switches to it.
+  Future<void> moveTo(String newRoot) async {
+    final oldRoot = _requireRoot;
+    final target = p.normalize(p.absolute(newRoot));
+    if (p.equals(oldRoot, target)) return;
+    if (p.isWithin(oldRoot, target)) {
+      throw LibraryException("The new folder can't be inside the current library folder.");
+    }
+    await Directory(target).create(recursive: true);
+    for (final item in await _db.select(_db.wallpapers).get()) {
+      final from = absolutePath(item);
+      final to = p.joinAll([target, ...p.posix.split(item.relativePath)]);
+      await _moveFile(from, to);
+      await _moveFile(LibraryLayout.sidecarFor(from), LibraryLayout.sidecarFor(to));
+    }
+    await setRoot(target);
+  }
+
+  static Future<void> _moveFile(String from, String to) async {
+    final file = File(from);
+    if (!await file.exists()) return;
+    await File(to).parent.create(recursive: true);
+    try {
+      await file.rename(to);
+    } on FileSystemException {
+      // Different drive: rename can't cross file systems.
+      await file.copy(to);
+      await file.delete();
+    }
+  }
+}
