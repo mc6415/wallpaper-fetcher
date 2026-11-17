@@ -8,6 +8,13 @@ abstract final class SettingsKeys {
 
   /// `system`, `light` or `dark`.
   static const themeMode = 'ui.themeMode';
+
+  /// Comma-separated source ids shown in Browse. Missing means all.
+  static const enabledSources = 'sources.enabled';
+
+  /// Comma-separated source ids with a key in the system keyring, so the
+  /// keyring is only touched (and possibly asks to be unlocked) when needed.
+  static const savedApiKeys = 'apiKeys.saved';
 }
 
 /// String key/value settings stored in the library database.

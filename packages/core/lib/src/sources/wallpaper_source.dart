@@ -30,6 +30,26 @@ enum TopRange {
   final String label;
 }
 
+/// A source-specific choice, e.g. a Wallhaven category.
+final class SourceOption {
+  const SourceOption(this.id, this.label);
+
+  final String id;
+  final String label;
+}
+
+/// A colour a source can filter by.
+final class SourceColour {
+  const SourceColour(this.id, this.label, this.argb);
+
+  /// What the source's API expects.
+  final String id;
+  final String label;
+
+  /// 0xAARRGGBB, for the swatch.
+  final int argb;
+}
+
 final class SearchQuery {
   const SearchQuery({
     this.text = '',
@@ -37,6 +57,8 @@ final class SearchQuery {
     this.topRange = TopRange.month,
     this.orientation,
     this.minResolution,
+    this.categories,
+    this.colour,
   });
 
   static const _unset = Object();
@@ -51,12 +73,21 @@ final class SearchQuery {
   /// Null means any size.
   final Resolution? minResolution;
 
+  /// [SourceOption.id]s from [SourceCapabilities.categories]. Null means the
+  /// source's defaults.
+  final Set<String>? categories;
+
+  /// A [SourceColour.id], or null for any colour.
+  final String? colour;
+
   SearchQuery copyWith({
     String? text,
     SortMode? sort,
     TopRange? topRange,
     Object? orientation = _unset,
     Object? minResolution = _unset,
+    Object? categories = _unset,
+    Object? colour = _unset,
   }) => SearchQuery(
     text: text ?? this.text,
     sort: sort ?? this.sort,
@@ -67,7 +98,24 @@ final class SearchQuery {
     minResolution: identical(minResolution, _unset)
         ? this.minResolution
         : minResolution as Resolution?,
+    categories: identical(categories, _unset)
+        ? this.categories
+        : categories as Set<String>?,
+    colour: identical(colour, _unset) ? this.colour : colour as String?,
   );
+
+  /// Whether [w] passes the size and shape filters. Unknown sizes pass.
+  bool accepts(RemoteWallpaper w) {
+    final (width, height) = (w.width, w.height);
+    if (width == null || height == null) return true;
+    if (minResolution case final min?) {
+      if (width < min.width || height < min.height) return false;
+    }
+    if (orientation case final o?) {
+      if (WallpaperOrientation.of(width, height) != o) return false;
+    }
+    return true;
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -76,11 +124,23 @@ final class SearchQuery {
       other.sort == sort &&
       other.topRange == topRange &&
       other.orientation == orientation &&
-      other.minResolution == minResolution;
+      other.minResolution == minResolution &&
+      _sameSet(other.categories, categories) &&
+      other.colour == colour;
 
   @override
-  int get hashCode =>
-      Object.hash(text, sort, topRange, orientation, minResolution);
+  int get hashCode => Object.hash(
+    text,
+    sort,
+    topRange,
+    orientation,
+    minResolution,
+    categories == null ? null : Object.hashAllUnordered(categories!),
+    colour,
+  );
+
+  static bool _sameSet(Set<String>? a, Set<String>? b) =>
+      a == null ? b == null : b != null && a.length == b.length && a.containsAll(b);
 }
 
 final class SourceCapabilities {
@@ -90,8 +150,16 @@ final class SourceCapabilities {
     this.supportsMinResolution = false,
     this.supportsTopRange = false,
     this.sortModes = const [],
+    this.categories = const [],
+    this.defaultCategories = const {},
+    this.colours = const [],
     this.isDaily = false,
     this.requiresApiKey = false,
+    this.apiKeyUrl,
+    this.attributionText,
+    this.attributionUrl,
+    this.notice,
+    this.creditOnDisplay = false,
   });
 
   final bool supportsSearch;
@@ -99,10 +167,28 @@ final class SourceCapabilities {
   final bool supportsMinResolution;
   final bool supportsTopRange;
   final List<SortMode> sortModes;
+  final List<SourceOption> categories;
+  final Set<String> defaultCategories;
+  final List<SourceColour> colours;
 
-  /// Publishes one image a day (Bing, NASA APOD).
+  /// Publishes one image a day (Bing, Wikimedia).
   final bool isDaily;
   final bool requiresApiKey;
+
+  /// Where to get a key.
+  final String? apiKeyUrl;
+
+  /// A credit to show wherever the source's results are listed, e.g.
+  /// "Photos from Unsplash", linking to [attributionUrl].
+  final String? attributionText;
+  final String? attributionUrl;
+
+  /// Terms worth knowing, e.g. "personal use only".
+  final String? notice;
+
+  /// The source's terms require crediting the author wherever an image is
+  /// shown (Unsplash).
+  final bool creditOnDisplay;
 }
 
 final class SourcePage {
@@ -142,6 +228,8 @@ abstract interface class WallpaperSource {
   String get name;
   SourceCapabilities get capabilities;
 
+  /// One page of results. Sources filter out results that fail
+  /// [SearchQuery.accepts], so a page can be empty while more pages remain.
   Future<SourcePage> search(SearchQuery query, {String? cursor});
 
   /// Called right before downloading. Sources with download rules (Unsplash's
@@ -150,7 +238,7 @@ abstract interface class WallpaperSource {
 }
 
 class SourceException implements Exception {
-  SourceException(this.message, {this.statusCode, this.cause});
+  SourceException(this.message, {this.statusCode, this.cause, this.needsApiKey = false});
 
   factory SourceException.fromDio(String sourceName, DioException e) {
     final status = e.response?.statusCode;
@@ -169,12 +257,25 @@ class SourceException implements Exception {
       DioExceptionType.cancel => 'The request was cancelled.',
       _ => 'Something went wrong talking to $sourceName.',
     };
-    return SourceException(message, statusCode: status, cause: e);
+    return SourceException(
+      message,
+      statusCode: status,
+      cause: e,
+      needsApiKey: status == 401,
+    );
   }
+
+  factory SourceException.missingKey(String sourceName) => SourceException(
+    '$sourceName needs a free API key. Add it in Settings.',
+    needsApiKey: true,
+  );
 
   final String message;
   final int? statusCode;
   final Object? cause;
+
+  /// The source has no key, or rejected it: point the user at Settings.
+  final bool needsApiKey;
 
   bool get isRateLimited => statusCode == 429;
 

@@ -71,7 +71,7 @@ instead of digging through system settings menus.
 ### 4. Rotation
 - Optional automatic switching on an interval (15 min, 1 h, daily, custom), drawing from:
   whole library, favourites, a tag, or a source. Random or sequential; avoid recent repeats.
-- Optional "daily" mode: fetch and apply today's Bing or NASA APOD image.
+- Optional "daily" mode: fetch and apply today's Bing or Wikimedia Picture of the Day.
 - Desktop: system tray icon with Next, Previous, Favourite current, Pause rotation,
   Open app, Quit. Optional start on login.
 - Android: WorkManager (minimum 15 min interval).
@@ -88,16 +88,20 @@ so adding a source means adding one class.
 1. Wallhaven (primary): API v1 at `https://wallhaven.cc/api/v1/search`. No key needed for
    SFW. Limit 45 requests/min. Supports keyword, categories, `atleast` (min resolution),
    ratios, and sorting (toplist, random, date_added, views, favorites). SFW only
-   (`purity=100`) in v1.
+   (`purity=100`) in v1. Default category: General only (anime/people selectable per search).
 2. Unsplash: free Access Key required (demo tier 50 requests/hour). Follow their API
    guidelines: credit the photographer and Unsplash, and call the photo's
    `links.download_location` endpoint whenever a photo is downloaded.
-3. Pexels: free API key (200 requests/hour, 20,000/month). Credit photographer and Pexels.
+3. ~~Pexels~~ dropped (decided 2026-11-17): Pexels' API guidelines forbid "making Pexels
+   content available as a wallpaper app".
 4. Bing image of the day: unofficial endpoint
    `https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=en-US` (last 8 days).
    Use the UHD variant (`urlbase` + `_UHD.jpg`). Store and show the copyright text.
-5. NASA APOD: `https://api.nasa.gov/planetary/apod`, user-supplied key with `DEMO_KEY`
-   fallback. Skip entries where `media_type` isn't `image`; prefer `hdurl`.
+5. Wikimedia Commons Picture of the Day (replaces NASA APOD, decided 2026-11-17: the APOD
+   API returned the NASA logo placeholder for every date tested, May-Nov 2026, after APOD
+   moved to science.nasa.gov). Feed: `https://api.wikimedia.org/feed/v1/wikipedia/en/featured/YYYY/MM/DD`,
+   `image` field. No key. Gives full-size URL, width/height, artist and licence. Revisit
+   APOD if its API recovers.
 6. Local folder import (see Library).
 
 For every source: client-side throttling plus backoff on HTTP 429, short-lived caching of
@@ -169,7 +173,8 @@ Commit at the end of each phase with a clear message and keep the README current
   packages, and the `WallpaperSource` / `WallpaperSetter` interfaces. No code until I approve.
 - Phase 1 (Linux MVP): git init, scaffold, Wallhaven source, download to library, Library
   screen, apply on KDE Plasma.
-- Phase 2: Unsplash, Pexels, Bing, NASA APOD; favourites, tags, filters; history; local import.
+- Phase 2: Unsplash, Bing, Wikimedia Picture of the Day; favourites, tags, filters; history;
+  local import.
 - Phase 3: rotation, system tray, start on login; other Linux desktops.
 - Phase 4: Windows.
 - Phase 5: Android.

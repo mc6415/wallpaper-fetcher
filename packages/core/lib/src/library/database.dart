@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
+import '../models/display_target.dart';
 import '../models/orientation.dart';
 
 part 'database.g.dart';
@@ -74,6 +75,11 @@ class ApplyHistory extends Table {
 
   /// [DisplayTarget.id], e.g. `DP-1` or `lock`.
   TextColumn get target => text()();
+
+  /// Applied by stepping back/forward through history; such entries don't
+  /// become new history positions themselves.
+  BoolColumn get viaHistory => boolean().withDefault(const Constant(false))();
+  TextColumn get fit => textEnum<FitMode>().nullable()();
 }
 
 @DataClassName('SettingEntry')
@@ -90,10 +96,16 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(applyHistory, applyHistory.viaHistory);
+        await m.addColumn(applyHistory, applyHistory.fit);
+      }
+    },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
     },

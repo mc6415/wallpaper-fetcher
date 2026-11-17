@@ -134,9 +134,19 @@ class _DetailsPanel extends StatelessWidget {
         children: [
           ...actions.expand((a) => [a, const SizedBox(height: 8)]),
           const SizedBox(height: 8),
+          if (w.title case final title?) ...[
+            Text(title, style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+          ],
+          if (w.date case final date?) _Row(Icons.today_outlined, 'Featured ${formatDate(date)}'),
           if (w.width != null) _Row(Icons.aspect_ratio, formatSize(w.width!, w.height!)),
           if (w.fileSize != null) _Row(Icons.insert_drive_file_outlined, formatBytes(w.fileSize!)),
-          _Row(Icons.public, w.attribution.creditLine ?? 'From $sourceName'),
+          _Row(
+            Icons.person_outline,
+            w.attribution.creditLine ?? 'From $sourceName',
+            onTap: w.attribution.authorUrl == null ? null : () => openWebPage(w.attribution.authorUrl!),
+          ),
+          if (w.attribution.licence case final licence?) _Row(Icons.gavel_outlined, licence),
           if (w.attribution.originalUrl case final original?)
             _Row(Icons.link, 'Original source', onTap: () => openWebPage(original)),
           if (w.colours.isNotEmpty) ...[
@@ -177,7 +187,7 @@ class _Row extends StatelessWidget {
     dense: true,
     contentPadding: EdgeInsets.zero,
     leading: Icon(icon, size: 20),
-    title: Text(text),
+    title: Text(text, maxLines: 4, overflow: TextOverflow.ellipsis),
     trailing: onTap == null ? null : const Icon(Icons.open_in_new, size: 16),
     onTap: onTap,
   );

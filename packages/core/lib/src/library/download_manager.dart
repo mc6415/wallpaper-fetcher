@@ -127,10 +127,12 @@ class DownloadManager {
         return duplicate;
       }
 
-      final size = switch ((wallpaper.width, wallpaper.height)) {
-        (final w?, final h?) => (width: w, height: h),
-        _ => await readImageSizeFromFile(part.path),
-      };
+      // Measure the file itself; what the source says is only a fallback.
+      final size = await readImageSizeFromFile(part.path) ??
+          switch ((wallpaper.width, wallpaper.height)) {
+            (final w?, final h?) => (width: w, height: h),
+            _ => null,
+          };
       if (size == null) {
         throw LibraryException("The downloaded file isn't an image we can read.");
       }

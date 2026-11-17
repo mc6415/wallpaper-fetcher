@@ -21,6 +21,8 @@ final class Sidecar {
     this.attribution = Attribution.none,
     this.dominantColour,
     this.downloadedAt,
+    this.favourite = false,
+    this.hidden = false,
   });
 
   factory Sidecar.fromRemote(RemoteWallpaper w, {DateTime? downloadedAt}) =>
@@ -58,6 +60,8 @@ final class Sidecar {
           : Attribution.none,
       dominantColour: json['dominantColour'] as int?,
       downloadedAt: DateTime.tryParse(json['downloadedAt'] as String? ?? ''),
+      favourite: json['favourite'] == true,
+      hidden: json['hidden'] == true,
     );
   }
 
@@ -74,6 +78,24 @@ final class Sidecar {
   final int? dominantColour;
   final DateTime? downloadedAt;
 
+  /// Library state, kept here too so it survives a database rebuild.
+  final bool favourite;
+  final bool hidden;
+
+  Sidecar copyWith({List<String>? tags, bool? favourite, bool? hidden}) => Sidecar(
+    source: source,
+    sourceId: sourceId,
+    pageUrl: pageUrl,
+    downloadUrl: downloadUrl,
+    title: title,
+    tags: tags ?? this.tags,
+    attribution: attribution,
+    dominantColour: dominantColour,
+    downloadedAt: downloadedAt,
+    favourite: favourite ?? this.favourite,
+    hidden: hidden ?? this.hidden,
+  );
+
   Map<String, Object?> toJson() => {
     'formatVersion': formatVersion,
     'createdBy': 'Wallpaper Fetcher',
@@ -86,6 +108,8 @@ final class Sidecar {
     'attribution': attribution.toJson(),
     'dominantColour': dominantColour,
     'downloadedAt': downloadedAt?.toUtc().toIso8601String(),
+    'favourite': favourite,
+    'hidden': hidden,
   };
 
   /// Returns null if there is no sidecar or it can't be read.

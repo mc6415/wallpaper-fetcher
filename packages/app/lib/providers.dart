@@ -15,7 +15,61 @@ final servicesProvider = Provider<AppServices>(
 final libraryProvider = Provider((ref) => ref.watch(servicesProvider).library);
 final sourcesProvider = Provider((ref) => ref.watch(servicesProvider).sources);
 
-// --- Library ---------------------------------------------------------------
+// --- Sources -----------------------------------------------------------------
+
+/// Source ids shown in Browse, in tab order.
+class EnabledSourcesNotifier extends Notifier<List<String>> {
+  @override
+  List<String> build() {
+    final services = ref.watch(servicesProvider);
+    final saved = services.initialSettings[SettingsKeys.enabledSources];
+    final all = services.sources.keys.toList();
+    if (saved == null) return all;
+    final chosen = splitIds(saved).toSet();
+    return [for (final id in all) if (chosen.contains(id)) id];
+  }
+
+  Future<void> setEnabled(String sourceId, bool enabled) async {
+    final chosen = {...state};
+    enabled ? chosen.add(sourceId) : chosen.remove(sourceId);
+    state = [for (final id in ref.read(sourcesProvider).keys) if (chosen.contains(id)) id];
+    await ref.read(servicesProvider).settings.set(SettingsKeys.enabledSources, state.join(','));
+  }
+}
+
+final enabledSourcesProvider = NotifierProvider<EnabledSourcesNotifier, List<String>>(
+  EnabledSourcesNotifier.new,
+);
+
+/// Source ids that have an API key.
+class ApiKeysNotifier extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => ref.watch(servicesProvider).apiKeys.configured;
+
+  Future<void> save(String sourceId, String key) async {
+    final services = ref.read(servicesProvider);
+    await services.keyStore.save(sourceId, key.trim());
+    services.apiKeys[sourceId] = key;
+    await _remember();
+  }
+
+  Future<void> remove(String sourceId) async {
+    final services = ref.read(servicesProvider);
+    await services.keyStore.remove(sourceId);
+    services.apiKeys[sourceId] = null;
+    await _remember();
+  }
+
+  Future<void> _remember() async {
+    final services = ref.read(servicesProvider);
+    state = services.apiKeys.configured;
+    await services.settings.set(SettingsKeys.savedApiKeys, state.isEmpty ? null : state.join(','));
+  }
+}
+
+final apiKeysProvider = NotifierProvider<ApiKeysNotifier, Set<String>>(ApiKeysNotifier.new);
+
+// --- Library -----------------------------------------------------------------
 
 class LibraryRootNotifier extends Notifier<String?> {
   @override
@@ -53,13 +107,42 @@ final librarySortProvider = NotifierProvider<LibrarySortNotifier, LibrarySort>(
   LibrarySortNotifier.new,
 );
 
+class LibraryFilterNotifier extends Notifier<LibraryFilter> {
+  @override
+  LibraryFilter build() => const LibraryFilter();
+
+  void set(LibraryFilter filter) => state = filter;
+
+  void clear() => state = const LibraryFilter();
+}
+
+final libraryFilterProvider = NotifierProvider<LibraryFilterNotifier, LibraryFilter>(
+  LibraryFilterNotifier.new,
+);
+
 final libraryItemsProvider = StreamProvider<List<LibraryItem>>((ref) {
   ref.watch(libraryRootProvider);
-  return ref.watch(libraryProvider).watch(sort: ref.watch(librarySortProvider));
+  return ref
+      .watch(libraryProvider)
+      .watch(sort: ref.watch(librarySortProvider), filter: ref.watch(libraryFilterProvider));
+});
+
+/// Everything in the library, unfiltered (for counts).
+final libraryTotalProvider = StreamProvider<int>((ref) {
+  ref.watch(libraryRootProvider);
+  return ref.watch(libraryProvider).watch().map((items) => items.length);
 });
 
 final libraryItemProvider = StreamProvider.family<LibraryItem?, int>(
   (ref, id) => ref.watch(libraryProvider).watchById(id),
+);
+
+final libraryTagsProvider = StreamProvider<List<({String tag, int count})>>(
+  (ref) => ref.watch(libraryProvider).watchTags(),
+);
+
+final librarySourceIdsProvider = StreamProvider<List<String>>(
+  (ref) => ref.watch(libraryProvider).watchSourceIds(),
 );
 
 final downloadedKeysProvider = StreamProvider<Set<String>>(
@@ -84,6 +167,11 @@ Future<LibraryItem?> downloadWallpaper(WidgetRef ref, RemoteWallpaper wallpaper)
     return null;
   }
 }
+
+/// A display name for a source id, including `local`.
+String sourceName(WidgetRef ref, String sourceId) =>
+    ref.read(sourcesProvider)[sourceId]?.name ??
+    (sourceId == Sidecar.localSource ? 'Your images' : sourceId);
 
 final class RescanState {
   const RescanState({this.running = false, this.last, this.error});
@@ -124,7 +212,7 @@ class RescanNotifier extends Notifier<RescanState> {
 
 final rescanProvider = NotifierProvider<RescanNotifier, RescanState>(RescanNotifier.new);
 
-// --- Setting wallpapers ----------------------------------------------------
+// --- Setting wallpapers and history ------------------------------------------
 
 final targetsProvider = FutureProvider<List<DisplayTarget>>(
   (ref) => ref.watch(servicesProvider).setter.targets(),
@@ -134,7 +222,15 @@ final setterCapabilitiesProvider = FutureProvider<SetterCapabilities>(
   (ref) => ref.watch(servicesProvider).setter.capabilities(),
 );
 
-// --- Settings --------------------------------------------------------------
+final nowShowingProvider = StreamProvider<Map<String, NowShowing>>(
+  (ref) => ref.watch(servicesProvider).history.watchNowShowing(),
+);
+
+final recentHistoryProvider = StreamProvider<List<HistoryEntry>>(
+  (ref) => ref.watch(servicesProvider).history.watchRecent(),
+);
+
+// --- Settings ----------------------------------------------------------------
 
 class ThemeModeNotifier extends Notifier<ThemeMode> {
   @override

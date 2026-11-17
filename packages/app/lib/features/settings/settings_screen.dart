@@ -6,6 +6,14 @@ import 'package:wallpaper_core/wallpaper_core.dart';
 import '../../platform/files.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../browse/browse_controller.dart';
+
+const _sourceDescriptions = {
+  'wallhaven': 'A huge wallpaper collection. Filter by size, shape, colour and category. No key needed.',
+  'unsplash': 'High-quality photos. Needs a free API key; new keys allow 50 requests an hour.',
+  'bing': "Bing's image of the day for the last 15 days. For personal use.",
+  'wikimedia': "Wikimedia Commons' Picture of the Day. Freely licensed.",
+};
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -21,7 +29,7 @@ class SettingsScreen extends ConsumerWidget {
   Future<void> _changeFolder(BuildContext context, WidgetRef ref, String current) async {
     final picked = await getDirectoryPath(initialDirectory: current, confirmButtonText: 'Use this folder');
     if (picked == null || !context.mounted) return;
-    final count = ref.read(libraryItemsProvider).value?.length ?? 0;
+    final count = ref.read(libraryTotalProvider).value ?? 0;
     final choice = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -56,6 +64,31 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _editKey(BuildContext context, WidgetRef ref, WallpaperSource source) async {
+    final key = await showDialog<String>(
+      context: context,
+      builder: (_) => _ApiKeyDialog(source: source),
+    );
+    if (key == null || key.trim().isEmpty || !context.mounted) return;
+    try {
+      await ref.read(apiKeysProvider.notifier).save(source.id, key);
+      ref.invalidate(browseProvider(source.id));
+      if (context.mounted) showSnack(context, '${source.name} key saved to your system keyring.');
+    } on Object catch (e) {
+      if (context.mounted) showSnack(context, "Couldn't save the key to your system keyring: $e");
+    }
+  }
+
+  Future<void> _removeKey(BuildContext context, WidgetRef ref, WallpaperSource source) async {
+    try {
+      await ref.read(apiKeysProvider.notifier).remove(source.id);
+      ref.invalidate(browseProvider(source.id));
+      if (context.mounted) showSnack(context, '${source.name} key removed.');
+    } on Object catch (e) {
+      if (context.mounted) showSnack(context, "Couldn't remove the key: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
@@ -65,6 +98,8 @@ class SettingsScreen extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
     final appearance = ref.watch(appearanceProvider);
     final services = ref.watch(servicesProvider);
+    final enabled = ref.watch(enabledSourcesProvider);
+    final keys = ref.watch(apiKeysProvider);
     final caps = ref.watch(setterCapabilitiesProvider).value;
     final resolutions = {..._resolutions, minResolution}.toList();
 
@@ -111,6 +146,52 @@ class SettingsScreen extends ConsumerWidget {
                 enabled: !rescan.running && root != null,
                 onTap: () => ref.read(rescanProvider.notifier).run(),
               ),
+              header('Sources'),
+              if (services.keyringError case final error?)
+                ListTile(
+                  leading: Icon(Icons.warning_amber, color: theme.colorScheme.error),
+                  title: Text(error),
+                  subtitle: const Text('Check that your keyring is unlocked, then restart the app.'),
+                ),
+              for (final source in services.sources.values) ...[
+                SwitchListTile(
+                  secondary: const Icon(Icons.public),
+                  title: Text(source.name),
+                  subtitle: Text(_sourceDescriptions[source.id] ?? source.capabilities.notice ?? ''),
+                  value: enabled.contains(source.id),
+                  onChanged: (on) => ref.read(enabledSourcesProvider.notifier).setEnabled(source.id, on),
+                ),
+                if (source.capabilities.requiresApiKey)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 56),
+                    child: ListTile(
+                      leading: Icon(keys.contains(source.id) ? Icons.key : Icons.key_off_outlined, size: 20),
+                      title: Text('${source.name} API key'),
+                      subtitle: Text(
+                        keys.contains(source.id)
+                            ? 'Saved in your system keyring'
+                            : 'Not set. ${source.name} stays empty until you add one.',
+                      ),
+                      trailing: Wrap(
+                        spacing: 4,
+                        children: [
+                          if (source.capabilities.apiKeyUrl case final url?)
+                            TextButton(onPressed: () => openWebPage(url), child: const Text('Get a key')),
+                          FilledButton.tonal(
+                            onPressed: () => _editKey(context, ref, source),
+                            child: Text(keys.contains(source.id) ? 'Change…' : 'Add…'),
+                          ),
+                          if (keys.contains(source.id))
+                            IconButton(
+                              tooltip: 'Remove key',
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () => _removeKey(context, ref, source),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
               header('Browsing'),
               ListTile(
                 leading: const Icon(Icons.aspect_ratio),
@@ -164,7 +245,7 @@ class SettingsScreen extends ConsumerWidget {
               const ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('Wallpaper Fetcher'),
-                subtitle: Text('Version 0.1.0'),
+                subtitle: Text('Version 0.2.0'),
               ),
               ListTile(
                 leading: const Icon(Icons.description_outlined),
@@ -177,6 +258,73 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ApiKeyDialog extends StatefulWidget {
+  const _ApiKeyDialog({required this.source});
+
+  final WallpaperSource source;
+
+  @override
+  State<_ApiKeyDialog> createState() => _ApiKeyDialogState();
+}
+
+class _ApiKeyDialogState extends State<_ApiKeyDialog> {
+  final _controller = TextEditingController();
+  bool _visible = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.source.name;
+    return AlertDialog(
+      title: Text('$name API key'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              name == 'Unsplash'
+                  ? 'Create an app at unsplash.com/oauth/applications, then paste its "Access Key" '
+                        '(not the Secret key). It is stored in your system keyring, not in a file.'
+                  : 'Paste your $name key. It is stored in your system keyring, not in a file.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              obscureText: !_visible,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                labelText: 'Access key',
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  tooltip: _visible ? 'Hide' : 'Show',
+                  icon: Icon(_visible ? Icons.visibility_off : Icons.visibility),
+                  onPressed: () => setState(() => _visible = !_visible),
+                ),
+              ),
+              onSubmitted: (value) => Navigator.pop(context, value),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        if (widget.source.capabilities.apiKeyUrl case final url?)
+          TextButton(onPressed: () => openWebPage(url), child: const Text('Get a key')),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, _controller.text), child: const Text('Save')),
+      ],
     );
   }
 }

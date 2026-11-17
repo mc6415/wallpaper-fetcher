@@ -3,65 +3,96 @@ import 'package:material_ui/material_ui.dart';
 import 'package:wallpaper_core/wallpaper_core.dart';
 
 import '../../providers.dart';
+import '../../widgets/common.dart';
 
-/// One search result: thumbnail, size, and a download button that shows
-/// progress and "already in library".
+/// One search result: thumbnail, a label (size, date or credit), and a
+/// download button that shows progress and "already in library".
 class RemoteTile extends ConsumerWidget {
-  const RemoteTile({super.key, required this.wallpaper, required this.onOpen});
+  const RemoteTile({
+    super.key,
+    required this.wallpaper,
+    required this.onOpen,
+    this.showCredit = false,
+  });
 
   final RemoteWallpaper wallpaper;
   final VoidCallback onOpen;
 
+  /// Show the author on the tile (Unsplash requires it wherever a photo is
+  /// shown).
+  final bool showCredit;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final placeholder = wallpaper.colours.isEmpty
-        ? theme.colorScheme.surfaceContainerHighest
-        : Color(wallpaper.colours.first);
-    return Card.filled(
-      clipBehavior: Clip.antiAlias,
-      margin: EdgeInsets.zero,
-      child: InkWell(
-        onTap: onOpen,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            ColoredBox(color: placeholder),
-            Image.network(
-              wallpaper.thumbnailUrl.toString(),
-              fit: BoxFit.cover,
-              frameBuilder: (context, child, frame, sync) => AnimatedOpacity(
-                opacity: frame == null ? 0 : 1,
-                duration: const Duration(milliseconds: 200),
-                child: child,
+    final w = wallpaper;
+    final placeholder = w.colours.isEmpty ? theme.colorScheme.surfaceContainerHighest : Color(w.colours.first);
+    final label = [
+      if (w.date case final d?) formatDate(d),
+      if (showCredit && w.attribution.authorName != null) w.attribution.authorName!,
+      if (w.date == null && !showCredit && w.width != null) formatSize(w.width!, w.height!),
+    ].join(' · ');
+
+    return Tooltip(
+      message: w.title ?? w.attribution.creditLine ?? '',
+      waitDuration: const Duration(milliseconds: 600),
+      child: Card.filled(
+        clipBehavior: Clip.antiAlias,
+        margin: EdgeInsets.zero,
+        child: InkWell(
+          onTap: onOpen,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: placeholder),
+              Image.network(
+                w.thumbnailUrl.toString(),
+                fit: BoxFit.cover,
+                frameBuilder: (context, child, frame, sync) => AnimatedOpacity(
+                  opacity: frame == null ? 0 : 1,
+                  duration: const Duration(milliseconds: 200),
+                  child: child,
+                ),
+                errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined),
               ),
-              errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined),
-            ),
-            if (wallpaper.width case final w?)
-              Positioned(
-                left: 8,
-                bottom: 8,
-                child: _Badge(text: '$w × ${wallpaper.height}'),
-              ),
-            Positioned(top: 4, right: 4, child: DownloadButton(wallpaper: wallpaper)),
-          ],
+              if (label.isNotEmpty) Positioned(left: 8, bottom: 8, right: 56, child: TileBadge(text: label)),
+              Positioned(top: 4, right: 4, child: DownloadButton(wallpaper: w)),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _Badge extends StatelessWidget {
-  const _Badge({required this.text});
+/// White text on a translucent dark pill, for labels over images.
+class TileBadge extends StatelessWidget {
+  const TileBadge({super.key, required this.text, this.icon});
 
   final String text;
+  final IconData? icon;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 12)),
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: DecoratedBox(
+      decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[Icon(icon, size: 14, color: Colors.white), const SizedBox(width: 4)],
+            Flexible(
+              child: Text(
+                text,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
     ),
   );
 }

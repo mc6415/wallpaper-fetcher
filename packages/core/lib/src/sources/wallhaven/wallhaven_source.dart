@@ -49,7 +49,47 @@ class WallhavenSource implements WallpaperSource {
       SortMode.favourites,
       SortMode.relevance,
     ],
+    categories: [
+      SourceOption('general', 'General'),
+      SourceOption('anime', 'Anime'),
+      SourceOption('people', 'People'),
+    ],
+    defaultCategories: {'general'},
+    colours: colours,
   );
+
+  /// Wallhaven only accepts these colours.
+  static const colours = [
+    SourceColour('660000', 'Maroon', 0xFF660000),
+    SourceColour('990000', 'Dark red', 0xFF990000),
+    SourceColour('cc0000', 'Red', 0xFFCC0000),
+    SourceColour('cc3333', 'Brick', 0xFFCC3333),
+    SourceColour('ea4c88', 'Pink', 0xFFEA4C88),
+    SourceColour('993399', 'Purple', 0xFF993399),
+    SourceColour('663399', 'Violet', 0xFF663399),
+    SourceColour('333399', 'Indigo', 0xFF333399),
+    SourceColour('0066cc', 'Blue', 0xFF0066CC),
+    SourceColour('0099cc', 'Sky blue', 0xFF0099CC),
+    SourceColour('66cccc', 'Turquoise', 0xFF66CCCC),
+    SourceColour('77cc33', 'Lime', 0xFF77CC33),
+    SourceColour('669900', 'Green', 0xFF669900),
+    SourceColour('336600', 'Dark green', 0xFF336600),
+    SourceColour('666600', 'Olive', 0xFF666600),
+    SourceColour('999900', 'Khaki', 0xFF999900),
+    SourceColour('cccc33', 'Mustard', 0xFFCCCC33),
+    SourceColour('ffff00', 'Yellow', 0xFFFFFF00),
+    SourceColour('ffcc33', 'Gold', 0xFFFFCC33),
+    SourceColour('ff9900', 'Orange', 0xFFFF9900),
+    SourceColour('ff6600', 'Dark orange', 0xFFFF6600),
+    SourceColour('cc6633', 'Copper', 0xFFCC6633),
+    SourceColour('996633', 'Brown', 0xFF996633),
+    SourceColour('663300', 'Dark brown', 0xFF663300),
+    SourceColour('000000', 'Black', 0xFF000000),
+    SourceColour('999999', 'Grey', 0xFF999999),
+    SourceColour('cccccc', 'Light grey', 0xFFCCCCCC),
+    SourceColour('ffffff', 'White', 0xFFFFFFFF),
+    SourceColour('424153', 'Slate', 0xFF424153),
+  ];
 
   @override
   Future<SourcePage> search(SearchQuery query, {String? cursor}) async {
@@ -90,17 +130,26 @@ class WallhavenSource implements WallpaperSource {
     final text = query.text.trim();
     return {
       if (text.isNotEmpty) 'q': text,
-      'categories': '111', // general, anime, people
+      'categories': categoryBits(query.categories),
       'purity': '100', // safe for work only
       'sorting': _sorting(query.sort, hasText: text.isNotEmpty),
       'order': 'desc',
       if (query.sort == SortMode.toplist) 'topRange': query.topRange.code,
       if (query.minResolution case final r?) 'atleast': formatResolution(r),
+      'colors': ?query.colour,
       'ratios': ?_ratios(query.orientation),
       'page': '$page',
       'seed': ?seed,
       if (apiKey case final key? when key.isNotEmpty) 'apikey': key,
     };
+  }
+
+  /// Wallhaven's `categories` flags: general, anime, people.
+  static String categoryBits(Set<String>? chosen) {
+    final c = (chosen == null || chosen.isEmpty) ? const {'general'} : chosen;
+    return [
+      for (final id in const ['general', 'anime', 'people']) c.contains(id) ? '1' : '0',
+    ].join();
   }
 
   static String _sorting(SortMode sort, {required bool hasText}) =>

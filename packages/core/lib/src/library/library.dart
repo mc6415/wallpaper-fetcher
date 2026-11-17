@@ -4,6 +4,8 @@ import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 
+import '../models/attribution.dart';
+import '../models/display_target.dart';
 import '../models/orientation.dart';
 import '../settings/settings_store.dart';
 import 'database.dart';
@@ -62,6 +64,101 @@ class LibraryException implements Exception {
   String toString() => message;
 }
 
+/// What the library grid shows. Text matches title, credits, source and tags.
+final class LibraryFilter {
+  const LibraryFilter({
+    this.text = '',
+    this.source,
+    this.orientation,
+    this.favouritesOnly = false,
+    this.hiddenOnly = false,
+    this.tag,
+  });
+
+  static const _unset = Object();
+
+  final String text;
+  final String? source;
+  final WallpaperOrientation? orientation;
+  final bool favouritesOnly;
+  final bool hiddenOnly;
+  final String? tag;
+
+  bool get isEmpty =>
+      text.trim().isEmpty &&
+      source == null &&
+      orientation == null &&
+      !favouritesOnly &&
+      !hiddenOnly &&
+      tag == null;
+
+  LibraryFilter copyWith({
+    String? text,
+    Object? source = _unset,
+    Object? orientation = _unset,
+    bool? favouritesOnly,
+    bool? hiddenOnly,
+    Object? tag = _unset,
+  }) => LibraryFilter(
+    text: text ?? this.text,
+    source: identical(source, _unset) ? this.source : source as String?,
+    orientation: identical(orientation, _unset)
+        ? this.orientation
+        : orientation as WallpaperOrientation?,
+    favouritesOnly: favouritesOnly ?? this.favouritesOnly,
+    hiddenOnly: hiddenOnly ?? this.hiddenOnly,
+    tag: identical(tag, _unset) ? this.tag : tag as String?,
+  );
+
+  /// The parts that can't be done in SQL: tag and free-text matching.
+  bool matches(LibraryItem item) {
+    if (tag case final wanted?) {
+      final lower = wanted.toLowerCase();
+      if (!item.tags.any((t) => t.toLowerCase() == lower)) return false;
+    }
+    final words = text.trim().toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+    if (words.isEmpty) return true;
+    final haystack = [
+      item.title,
+      item.authorName,
+      item.creditLine,
+      item.source,
+      item.sourceId,
+      ...item.tags,
+    ].whereType<String>().join('\n').toLowerCase();
+    return words.every(haystack.contains);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is LibraryFilter &&
+      other.text == text &&
+      other.source == source &&
+      other.orientation == orientation &&
+      other.favouritesOnly == favouritesOnly &&
+      other.hiddenOnly == hiddenOnly &&
+      other.tag == tag;
+
+  @override
+  int get hashCode => Object.hash(text, source, orientation, favouritesOnly, hiddenOnly, tag);
+}
+
+final class ImportResult {
+  const ImportResult({this.imported = 0, this.duplicates = 0, this.failed = 0});
+
+  final int imported;
+
+  /// Already in the library (same file contents).
+  final int duplicates;
+
+  /// Unreadable images or files that couldn't be copied.
+  final int failed;
+
+  @override
+  String toString() =>
+      'ImportResult(imported: $imported, duplicates: $duplicates, failed: $failed)';
+}
+
 /// The downloaded wallpapers: files in the library folder plus their rows in
 /// the database. Paths are stored relative to the folder.
 class WallpaperLibrary {
@@ -94,8 +191,54 @@ class WallpaperLibrary {
   String absoluteFor(String relativePath) =>
       p.joinAll([_requireRoot, ...p.posix.split(relativePath)]);
 
-  Stream<List<LibraryItem>> watch({LibrarySort sort = LibrarySort.newest}) =>
-      (_db.select(_db.wallpapers)..orderBy(_ordering(sort))).watch();
+  Stream<List<LibraryItem>> watch({
+    LibrarySort sort = LibrarySort.newest,
+    LibraryFilter filter = const LibraryFilter(),
+  }) {
+    final query = _db.select(_db.wallpapers)
+      ..where((t) {
+        Expression<bool> condition = const Constant(true);
+        if (filter.source case final s?) condition &= t.source.equals(s);
+        if (filter.orientation case final o?) condition &= t.orientation.equalsValue(o);
+        if (filter.favouritesOnly) condition &= t.isFavourite.equals(true);
+        if (filter.hiddenOnly) condition &= t.isHidden.equals(true);
+        return condition;
+      })
+      ..orderBy(_ordering(sort));
+    return query.watch().map(
+      (items) => [
+        for (final item in items)
+          if (filter.matches(item)) item,
+      ],
+    );
+  }
+
+  /// Every tag in the library and how many images have it, most used first.
+  /// Tags differing only in case count as one (shown as first seen).
+  Stream<List<({String tag, int count})>> watchTags() =>
+      _db.select(_db.wallpapers).watch().map((items) {
+        final counts = <String, int>{};
+        final labels = <String, String>{};
+        for (final item in items) {
+          for (final tag in item.tags) {
+            final key = tag.toLowerCase();
+            labels.putIfAbsent(key, () => tag);
+            counts.update(key, (c) => c + 1, ifAbsent: () => 1);
+          }
+        }
+        return [for (final e in counts.entries) (tag: labels[e.key]!, count: e.value)]..sort(
+          (a, b) => a.count != b.count
+              ? b.count.compareTo(a.count)
+              : a.tag.toLowerCase().compareTo(b.tag.toLowerCase()),
+        );
+      });
+
+  /// Source ids present in the library.
+  Stream<List<String>> watchSourceIds() {
+    final w = _db.wallpapers;
+    final query = _db.selectOnly(w, distinct: true)..addColumns([w.source]);
+    return query.watch().map((rows) => [for (final r in rows) r.read(w.source)!]..sort());
+  }
 
   List<OrderClauseGenerator<$WallpapersTable>> _ordering(LibrarySort sort) =>
       switch (sort) {
@@ -183,6 +326,8 @@ class WallpaperLibrary {
             creditLine: Value(a.creditLine),
             tags: Value(meta.tags),
             dominantColour: Value(meta.dominantColour),
+            isFavourite: Value(meta.favourite),
+            isHidden: Value(meta.hidden),
           ),
         );
     return (await byId(id))!;
@@ -206,7 +351,64 @@ class WallpaperLibrary {
     await (_db.delete(_db.wallpapers)..where((t) => t.id.equals(item.id))).go();
   }
 
-  Future<void> recordApplied(LibraryItem item, Iterable<String> targetIds) =>
+  Future<void> setFavourite(LibraryItem item, bool favourite) =>
+      _update(item, WallpapersCompanion(isFavourite: Value(favourite)));
+
+  /// Hidden images stay in the library but are left out of rotation.
+  Future<void> setHidden(LibraryItem item, bool hidden) =>
+      _update(item, WallpapersCompanion(isHidden: Value(hidden)));
+
+  /// Replaces the tags, dropping blanks and case-insensitive repeats.
+  Future<void> setTags(LibraryItem item, List<String> tags) {
+    final seen = <String>{};
+    final clean = [
+      for (final t in tags.map((t) => t.trim()))
+        if (t.isNotEmpty && seen.add(t.toLowerCase())) t,
+    ];
+    return _update(item, WallpapersCompanion(tags: Value(clean)));
+  }
+
+  Future<void> _update(LibraryItem item, WallpapersCompanion changes) async {
+    await (_db.update(_db.wallpapers)..where((t) => t.id.equals(item.id))).write(changes);
+    final updated = await byId(item.id);
+    if (updated != null) await _writeSidecar(updated);
+  }
+
+  /// Keeps the sidecar in step with the library state (tags, favourite,
+  /// hidden) so a rescan restores it. Creates one for local images.
+  Future<void> _writeSidecar(LibraryItem item) async {
+    final path = LibraryLayout.sidecarFor(absolutePath(item));
+    final base = await Sidecar.read(path) ??
+        Sidecar(
+          source: item.source,
+          sourceId: item.sourceId,
+          pageUrl: item.sourcePageUrl,
+          downloadUrl: item.downloadUrl,
+          title: item.title,
+          attribution: Attribution(
+            authorName: item.authorName,
+            authorUrl: item.authorUrl,
+            licence: item.licence,
+            creditLine: item.creditLine,
+          ),
+          dominantColour: item.dominantColour,
+          downloadedAt: item.addedAt,
+        );
+    try {
+      await base
+          .copyWith(tags: item.tags, favourite: item.isFavourite, hidden: item.isHidden)
+          .write(path);
+    } on FileSystemException catch (e) {
+      _log.warning("Couldn't update the sidecar for ${item.relativePath}: $e");
+    }
+  }
+
+  Future<void> recordApplied(
+    LibraryItem item,
+    Iterable<String> targetIds, {
+    bool viaHistory = false,
+    FitMode? fit,
+  }) =>
       _db.transaction(() async {
         final now = DateTime.now();
         for (final target in targetIds) {
@@ -217,6 +419,8 @@ class WallpaperLibrary {
                   wallpaperId: Value(item.id),
                   appliedAt: now,
                   target: target,
+                  viaHistory: Value(viaHistory),
+                  fit: Value(fit),
                 ),
               );
         }
@@ -333,6 +537,92 @@ class WallpaperLibrary {
       await _moveFile(LibraryLayout.sidecarFor(from), LibraryLayout.sidecarFor(to));
     }
     await setRoot(target);
+  }
+
+  /// Copies (or moves) every image in [folder], including sub-folders, into
+  /// `local/<folder name>/` in the library. Images already in the library are
+  /// skipped.
+  Future<ImportResult> importFolder(String folder, {bool move = false}) async {
+    final root = _requireRoot;
+    final source = p.normalize(p.absolute(folder));
+    if (p.equals(source, root) || p.isWithin(root, source)) {
+      throw LibraryException('That folder is already part of your library.');
+    }
+    if (p.isWithin(source, root)) {
+      throw LibraryException(
+        "Your library is inside that folder, so it can't be imported. "
+        "Pick a folder that doesn't contain the library.",
+      );
+    }
+    final dir = Directory(source);
+    if (!await dir.exists()) throw LibraryException('$source no longer exists.');
+
+    final files = <String>[];
+    final entities = dir
+        .list(recursive: true, followLinks: false)
+        .handleError((Object e) => _log.warning('Skipping during import: $e'));
+    await for (final entity in entities) {
+      if (entity is! File || !LibraryLayout.isImage(entity.path)) continue;
+      final relative = p.relative(entity.path, from: source);
+      if (p.split(relative).any((part) => part.startsWith('.'))) continue;
+      files.add(entity.path);
+    }
+    files.sort();
+
+    final folderName = p.basename(source).replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    var imported = 0, duplicates = 0, failed = 0;
+    for (final file in files) {
+      try {
+        final hash = await hashFile(file);
+        if (await byHash(hash) != null) {
+          duplicates++;
+          continue;
+        }
+        final size = await readImageSizeFromFile(file);
+        if (size == null) {
+          _log.warning("Can't read image size of $file; not importing it");
+          failed++;
+          continue;
+        }
+        final relative = await _freeRelativePath(
+          p.posix.join(Sidecar.localSource, folderName, LibraryLayout.toStored(p.relative(file, from: source))),
+        );
+        final destination = absoluteFor(relative);
+        await File(destination).parent.create(recursive: true);
+        if (move) {
+          await _moveFile(file, destination);
+        } else {
+          await File(file).copy(destination);
+        }
+        await insert(
+          Sidecar.local(hash),
+          relativePath: relative,
+          width: size.width,
+          height: size.height,
+          fileSize: await File(destination).length(),
+          sha256: hash,
+        );
+        imported++;
+      } on FileSystemException catch (e) {
+        _log.warning('Import of $file failed: $e');
+        failed++;
+      }
+    }
+    final result = ImportResult(imported: imported, duplicates: duplicates, failed: failed);
+    _log.info('Imported from $source: $result');
+    return result;
+  }
+
+  /// [relative], or `name (2).ext`, `name (3).ext`... if it's taken.
+  Future<String> _freeRelativePath(String relative) async {
+    var candidate = relative;
+    for (var n = 2; ; n++) {
+      final inDb = await (_db.select(_db.wallpapers)
+            ..where((t) => t.relativePath.equals(candidate)))
+          .getSingleOrNull();
+      if (inDb == null && !await File(absoluteFor(candidate)).exists()) return candidate;
+      candidate = '${p.posix.withoutExtension(relative)} ($n)${p.posix.extension(relative)}';
+    }
   }
 
   static Future<void> _moveFile(String from, String to) async {

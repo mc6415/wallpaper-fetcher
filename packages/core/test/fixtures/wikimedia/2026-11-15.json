@@ -1,0 +1,42 @@
+{
+  "image": {
+    "title": "File:Mirador del Velo de Novia, Seixal, Madeira, Portugal, 2019-05-30, DD 67.jpg",
+    "thumbnail": {
+      "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0e/Mirador_del_Velo_de_Novia%2C_Seixal%2C_Madeira%2C_Portugal%2C_2019-05-30%2C_DD_67.jpg/960px-Mirador_del_Velo_de_Novia%2C_Seixal%2C_Madeira%2C_Portugal%2C_2019-05-30%2C_DD_67.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "width": 640,
+      "height": 960
+    },
+    "image": {
+      "source": "https://upload.wikimedia.org/wikipedia/commons/0/0e/Mirador_del_Velo_de_Novia%2C_Seixal%2C_Madeira%2C_Portugal%2C_2019-05-30%2C_DD_67.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "width": 5691,
+      "height": 8536
+    },
+    "file_page": "https://commons.wikimedia.org/wiki/File:Mirador_del_Velo_de_Novia,_Seixal,_Madeira,_Portugal,_2019-05-30,_DD_67.jpg",
+    "artist": {
+      "html": "<bdi><a href=\"https://www.wikidata.org/wiki/Q28147777\" class=\"extiw\" title=\"d:Q28147777\"><span title=\"Spanish photographer\">Diego Delso</span></a></bdi>",
+      "text": "Diego Delso"
+    },
+    "credit": {
+      "html": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+      "text": "Own work"
+    },
+    "license": {
+      "type": "CC BY-SA 4.0",
+      "code": "cc-by-sa-4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0"
+    },
+    "description": {
+      "html": "V\u00e9u da Noiva Waterfall, Seixal, Madeira, Portugal",
+      "text": "V\u00e9u da Noiva Waterfall, Seixal, Madeira, Portugal",
+      "lang": "en"
+    },
+    "wb_entity_id": "M87514491",
+    "structured": {
+      "captions": {
+        "en": "V\u00e9u da Noiva Waterfall, Seixal, Madeira, Portugal",
+        "zh-hant": "V\u00e9u da Noiva\u7011\u5e03\uff0c\u8461\u8404\u7259\u99ac\u5fb7\u62c9\u5cf6\u585e\u6c99\u723e",
+        "fr": "Chute du Voile de la Mari\u00e9e (Cascata do V\u00e9u da Noiva), Seixal (Mad\u00e8re), Portugal."
+      }
+    }
+  }
+}

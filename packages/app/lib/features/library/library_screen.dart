@@ -1,5 +1,4 @@
-import 'dart:io';
-
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
@@ -9,21 +8,76 @@ import '../../platform/files.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../apply/apply_sheet.dart';
+import '../browse/remote_tile.dart';
+import 'library_thumbnail.dart';
+import 'now_showing.dart';
 
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
 
+  Future<void> _import(BuildContext context, WidgetRef ref) async {
+    final folder = await getDirectoryPath(confirmButtonText: 'Import this folder');
+    if (folder == null || !context.mounted) return;
+    final move = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Import images'),
+        content: Text(
+          'Add the images in $folder (and its sub-folders) to your library? '
+          "They go into the library's \"local\" folder. Images already in your library are skipped.",
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Move them')),
+          FilledButton(onPressed: () => Navigator.pop(context, false), child: const Text('Copy them')),
+        ],
+      ),
+    );
+    if (move == null || !context.mounted) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [CircularProgressIndicator(), SizedBox(width: 24), Expanded(child: Text('Importing…'))],
+        ),
+      ),
+    );
+    String message;
+    try {
+      final r = await ref.read(libraryProvider).importFolder(folder, move: move);
+      message = [
+        'Imported ${r.imported} image${r.imported == 1 ? '' : 's'}',
+        if (r.duplicates > 0) '${r.duplicates} already in your library',
+        if (r.failed > 0) "${r.failed} couldn't be read",
+      ].join(', ');
+    } on Object catch (e) {
+      message = '$e';
+    }
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+      showSnack(context, '$message.');
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final items = ref.watch(libraryItemsProvider);
+    final total = ref.watch(libraryTotalProvider).value;
+    final filter = ref.watch(libraryFilterProvider);
     final sort = ref.watch(librarySortProvider);
     final rescan = ref.watch(rescanProvider);
     final root = ref.watch(libraryRootProvider);
-    final count = items.value?.length;
+    final shown = items.value?.length;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(count == null ? 'Library' : 'Library · $count'),
+        title: Text(switch ((shown, total)) {
+          (final s?, final t?) when !filter.isEmpty => 'Library · $s of $t',
+          (_, final t?) => 'Library · $t',
+          _ => 'Library',
+        }),
         actions: [
           MenuAnchor(
             menuChildren: [
@@ -41,102 +95,228 @@ class LibraryScreen extends ConsumerWidget {
             ),
           ),
           IconButton(
+            tooltip: 'History',
+            icon: const Icon(Icons.history),
+            onPressed: () => context.go('/library/history'),
+          ),
+          IconButton(
             tooltip: 'Rescan the library folder',
             onPressed: rescan.running ? null : () => ref.read(rescanProvider.notifier).run(),
             icon: rescan.running
                 ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.refresh),
           ),
-          if (root != null)
-            IconButton(
-              tooltip: 'Open the library folder',
-              icon: const Icon(Icons.folder_open_outlined),
-              onPressed: () => openFolder(root),
+          MenuAnchor(
+            menuChildren: [
+              MenuItemButton(
+                leadingIcon: const Icon(Icons.drive_folder_upload_outlined),
+                onPressed: () => _import(context, ref),
+                child: const Text('Import a folder…'),
+              ),
+              if (root != null)
+                MenuItemButton(
+                  leadingIcon: const Icon(Icons.folder_open_outlined),
+                  onPressed: () => openFolder(root),
+                  child: const Text('Open library folder'),
+                ),
+            ],
+            builder: (context, controller, _) => IconButton(
+              tooltip: 'More',
+              icon: const Icon(Icons.more_vert),
+              onPressed: () => controller.isOpen ? controller.close() : controller.open(),
             ),
+          ),
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
+      body: CustomScrollView(
+        slivers: [
           if (rescan.error != null)
-            MaterialBanner(
-              content: Text(rescan.error!),
-              leading: const Icon(Icons.warning_amber),
-              actions: [TextButton(onPressed: () => context.go('/settings'), child: const Text('Settings'))],
+            SliverToBoxAdapter(
+              child: MaterialBanner(
+                content: Text(rescan.error!),
+                leading: const Icon(Icons.warning_amber),
+                actions: [TextButton(onPressed: () => context.go('/settings'), child: const Text('Settings'))],
+              ),
             ),
-          Expanded(
-            child: switch (items) {
-              AsyncValue(value: final list?) when list.isNotEmpty => _Grid(items: list),
-              AsyncValue(value: _?) => MessageView(
-                icon: Icons.photo_library_outlined,
-                title: 'Your library is empty',
-                message: 'Wallpapers you download appear here, ready to apply in two clicks.',
-                actionLabel: 'Browse wallpapers',
-                onAction: () => context.go('/browse'),
+          if ((total ?? 0) > 0) ...[
+            const SliverToBoxAdapter(child: NowShowingStrip()),
+            const SliverToBoxAdapter(child: _FilterBar()),
+          ],
+          ...switch (items) {
+            AsyncValue(value: final list?) when list.isNotEmpty => [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                sliver: SliverGrid.builder(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 360,
+                    childAspectRatio: 16 / 10,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                  ),
+                  itemCount: list.length,
+                  itemBuilder: (context, i) => LibraryTile(key: ValueKey(list[i].id), item: list[i]),
+                ),
               ),
-              AsyncValue(error: final error?) => MessageView(
-                icon: Icons.error_outline,
-                title: "Couldn't load the library",
-                message: '$error',
+            ],
+            AsyncValue(value: _?) when !filter.isEmpty => [
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: MessageView(
+                  icon: Icons.filter_alt_off_outlined,
+                  title: 'Nothing matches these filters',
+                  actionLabel: 'Clear filters',
+                  onAction: () => ref.read(libraryFilterProvider.notifier).clear(),
+                ),
               ),
-              _ => const Center(child: CircularProgressIndicator()),
-            },
-          ),
+            ],
+            AsyncValue(value: _?) => [
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: MessageView(
+                  icon: Icons.photo_library_outlined,
+                  title: 'Your library is empty',
+                  message: 'Wallpapers you download appear here, ready to apply in two clicks. '
+                      'You can also import a folder of images you already have.',
+                  actionLabel: 'Browse wallpapers',
+                  onAction: () => context.go('/browse'),
+                ),
+              ),
+            ],
+            AsyncValue(error: final error?) => [
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: MessageView(
+                  icon: Icons.error_outline,
+                  title: "Couldn't load the library",
+                  message: '$error',
+                ),
+              ),
+            ],
+            _ => [const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))],
+          },
         ],
       ),
     );
   }
 }
 
-class _Grid extends StatelessWidget {
-  const _Grid({required this.items});
+class _FilterBar extends ConsumerStatefulWidget {
+  const _FilterBar();
 
-  final List<LibraryItem> items;
+  @override
+  ConsumerState<_FilterBar> createState() => _FilterBarState();
+}
+
+class _FilterBarState extends ConsumerState<_FilterBar> {
+  late final _search = TextEditingController(text: ref.read(libraryFilterProvider).text);
+
+  void _set(LibraryFilter f) => ref.read(libraryFilterProvider.notifier).set(f);
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 360,
-        childAspectRatio: 16 / 10,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
+    final filter = ref.watch(libraryFilterProvider);
+    final sourceIds = ref.watch(librarySourceIdsProvider).value ?? const [];
+    final tags = (ref.watch(libraryTagsProvider).value ?? const []).take(40).map((t) => t.tag).toList();
+    if (filter.tag != null && !tags.contains(filter.tag)) tags.insert(0, filter.tag!);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 320),
+            child: SearchBar(
+              controller: _search,
+              hintText: 'Search your library',
+              leading: const Icon(Icons.search),
+              constraints: const BoxConstraints(minHeight: 40),
+              onChanged: (text) => _set(filter.copyWith(text: text)),
+            ),
+          ),
+          if (sourceIds.length > 1)
+            ChoiceMenuChip<String?>(
+              icon: Icons.public,
+              tooltip: 'Source',
+              value: filter.source,
+              options: [null, ...sourceIds],
+              labelOf: (id) => id == null ? 'All sources' : sourceName(ref, id),
+              onSelected: (id) => _set(filter.copyWith(source: id)),
+            ),
+          ChoiceMenuChip<WallpaperOrientation?>(
+            icon: Icons.crop_rotate,
+            tooltip: 'Shape',
+            value: filter.orientation,
+            options: const [null, WallpaperOrientation.landscape, WallpaperOrientation.portrait, WallpaperOrientation.square],
+            labelOf: (o) => switch (o) {
+              null => 'Any shape',
+              WallpaperOrientation.landscape => 'Landscape',
+              WallpaperOrientation.portrait => 'Portrait',
+              WallpaperOrientation.square => 'Square',
+            },
+            onSelected: (o) => _set(filter.copyWith(orientation: o)),
+          ),
+          if (tags.isNotEmpty)
+            ChoiceMenuChip<String?>(
+              icon: Icons.sell_outlined,
+              tooltip: 'Tag',
+              value: filter.tag,
+              options: [null, ...tags],
+              labelOf: (t) => t ?? 'Any tag',
+              onSelected: (t) => _set(filter.copyWith(tag: t)),
+            ),
+          FilterChip(
+            avatar: const Icon(Icons.favorite_border, size: 18),
+            label: const Text('Favourites'),
+            selected: filter.favouritesOnly,
+            onSelected: (v) => _set(filter.copyWith(favouritesOnly: v)),
+          ),
+          FilterChip(
+            avatar: const Icon(Icons.visibility_off_outlined, size: 18),
+            label: const Text('Hidden'),
+            tooltip: 'Images left out of rotation',
+            selected: filter.hiddenOnly,
+            onSelected: (v) => _set(filter.copyWith(hiddenOnly: v)),
+          ),
+          if (!filter.isEmpty)
+            TextButton(
+              onPressed: () {
+                _search.clear();
+                ref.read(libraryFilterProvider.notifier).clear();
+              },
+              child: const Text('Clear'),
+            ),
+        ],
       ),
-      itemCount: items.length,
-      itemBuilder: (context, i) => LibraryTile(key: ValueKey(items[i].id), item: items[i]),
     );
   }
 }
 
-/// A library image: tap for details, or use the button to set it straight away.
-class LibraryTile extends ConsumerStatefulWidget {
+/// A library image: tap for details, the wallpaper button (or right-click) to
+/// set it straight away, the heart to favourite it.
+class LibraryTile extends ConsumerWidget {
   const LibraryTile({super.key, required this.item});
 
   final LibraryItem item;
 
   @override
-  ConsumerState<LibraryTile> createState() => _LibraryTileState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showCredit = ref.watch(sourcesProvider)[item.source]?.capabilities.creditOnDisplay ?? false;
+    final label = [
+      formatSize(item.width, item.height),
+      if (showCredit && item.authorName != null) item.authorName!,
+    ].join(' · ');
+    final overlay = IconButton.styleFrom(backgroundColor: Colors.black54, foregroundColor: Colors.white);
 
-class _LibraryTileState extends ConsumerState<LibraryTile> {
-  late Future<File> _thumbnail = _load();
-
-  Future<File> _load() {
-    final services = ref.read(servicesProvider);
-    return services.thumbnails.forItem(widget.item, services.library.absolutePath(widget.item));
-  }
-
-  @override
-  void didUpdateWidget(LibraryTile old) {
-    super.didUpdateWidget(old);
-    if (old.item.sha256 != widget.item.sha256) _thumbnail = _load();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final item = widget.item;
-    final theme = Theme.of(context);
     return Card.filled(
       clipBehavior: Clip.antiAlias,
       margin: EdgeInsets.zero,
@@ -146,31 +326,21 @@ class _LibraryTileState extends ConsumerState<LibraryTile> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            ColoredBox(
-              color: item.dominantColour == null
-                  ? theme.colorScheme.surfaceContainerHighest
-                  : Color(item.dominantColour!),
-            ),
-            FutureBuilder<File>(
-              future: _thumbnail,
-              builder: (context, snapshot) => switch (snapshot) {
-                AsyncSnapshot(data: final file?) => Image.file(file, fit: BoxFit.cover),
-                AsyncSnapshot(hasError: true) => const Icon(Icons.broken_image_outlined),
-                _ => const SizedBox.shrink(),
-              },
-            ),
+            LibraryThumbnail(item: item),
             Positioned(
               left: 8,
               bottom: 8,
-              child: DecoratedBox(
-                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  child: Text(
-                    formatSize(item.width, item.height),
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                ),
+              right: 56,
+              child: TileBadge(text: label, icon: item.isHidden ? Icons.visibility_off_outlined : null),
+            ),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: IconButton(
+                tooltip: item.isFavourite ? 'Remove from favourites' : 'Add to favourites',
+                style: overlay,
+                icon: Icon(item.isFavourite ? Icons.favorite : Icons.favorite_border),
+                onPressed: () => ref.read(libraryProvider).setFavourite(item, !item.isFavourite),
               ),
             ),
             Positioned(
@@ -178,7 +348,7 @@ class _LibraryTileState extends ConsumerState<LibraryTile> {
               bottom: 4,
               child: IconButton(
                 tooltip: 'Set as wallpaper',
-                style: IconButton.styleFrom(backgroundColor: Colors.black54, foregroundColor: Colors.white),
+                style: overlay,
                 icon: const Icon(Icons.wallpaper),
                 onPressed: () => showApplySheet(context, item),
               ),

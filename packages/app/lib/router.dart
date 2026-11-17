@@ -5,6 +5,7 @@ import 'package:wallpaper_core/wallpaper_core.dart';
 
 import 'features/browse/browse_screen.dart';
 import 'features/browse/remote_preview_screen.dart';
+import 'features/library/history_screen.dart';
 import 'features/library/library_detail_screen.dart';
 import 'features/library/library_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -47,6 +48,8 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: '/library',
                 builder: (_, _) => const LibraryScreen(),
                 routes: [
+                  // Before ':id', which would otherwise swallow it.
+                  GoRoute(path: 'history', builder: (_, _) => const HistoryScreen()),
                   GoRoute(
                     path: ':id',
                     builder: (_, state) => LibraryDetailScreen(id: int.parse(state.pathParameters['id']!)),

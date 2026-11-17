@@ -77,6 +77,10 @@ desktop monitors and the Fold's screens use the same model.
 - Built in from the start: CLI controls, and system accent colour (XDG portal on Linux,
   Material You on Android).
 - Not wanted: a shared library across OSes, web builds, usage analytics.
+- Phase 2: Wikimedia Commons Picture of the Day replaces NASA APOD (APOD API broken);
+  Wallhaven searches default to the General category only. Pexels dropped: its API
+  guidelines forbid wallpaper apps. Unsplash treats setting a wallpaper as a download,
+  which must be reported through `download_location`.
 
 ## Packages (maintenance re-checked when each phase starts)
 

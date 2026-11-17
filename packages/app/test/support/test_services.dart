@@ -6,6 +6,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:path/path.dart' as p;
 import 'package:wallpaper_core/wallpaper_core.dart';
+import 'package:wallpaper_fetcher/platform/key_store.dart';
 import 'package:wallpaper_fetcher/platform/linux_appearance.dart';
 import 'package:wallpaper_fetcher/platform/thumbnails.dart';
 import 'package:wallpaper_fetcher/providers.dart';
@@ -49,11 +50,27 @@ class _EmptyWallhaven implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// Keeps "keyring" contents in memory.
+class FakeKeyStore extends ApiKeyStore {
+  final saved = <String, String>{};
+
+  @override
+  Future<Map<String, String>> load(Iterable<String> sourceIds) async =>
+      {for (final id in sourceIds) id: ?saved[id]};
+
+  @override
+  Future<void> save(String sourceId, String key) async => saved[sourceId] = key;
+
+  @override
+  Future<void> remove(String sourceId) async => saved.remove(sourceId);
+}
+
 class TestEnv {
-  TestEnv._(this.services, this.setter, this.temp);
+  TestEnv._(this.services, this.setter, this.keyStore, this.temp);
 
   final AppServices services;
   final FakeSetter setter;
+  final FakeKeyStore keyStore;
   final Directory temp;
 
   /// Call inside `tester.runAsync`: it touches the real file system.
@@ -65,20 +82,31 @@ class TestEnv {
     if (withLibrary) await library.setRoot(p.join(temp.path, 'library'));
     final dio = Dio()..httpClientAdapter = _EmptyWallhaven();
     final setter = FakeSetter();
+    final history = WallpaperHistory(db, settings);
+    final apiKeys = ApiKeys();
+    final keyStore = FakeKeyStore();
     final services = AppServices(
       db: db,
       settings: settings,
       library: library,
+      history: history,
       dio: dio,
-      sources: {WallhavenSource.sourceId: WallhavenSource(dio: dio)},
+      sources: {
+        WallhavenSource.sourceId: WallhavenSource(dio: dio),
+        UnsplashSource.sourceId: UnsplashSource(dio: dio, keys: apiKeys),
+        BingSource.sourceId: BingSource(dio: dio),
+        WikimediaSource.sourceId: WikimediaSource(dio: dio, daysPerPage: 2),
+      },
+      apiKeys: apiKeys,
+      keyStore: keyStore,
       downloads: DownloadManager(dio: dio, library: library),
       setter: setter,
-      applier: WallpaperApplier(setter: setter, library: library),
+      applier: WallpaperApplier(setter: setter, library: library, history: history),
       thumbnails: ThumbnailCache(p.join(temp.path, 'thumbs')),
       initialSettings: const {SettingsKeys.minResolution: '3840x2160'},
       logDirectory: p.join(temp.path, 'logs'),
     );
-    return TestEnv._(services, setter, temp);
+    return TestEnv._(services, setter, keyStore, temp);
   }
 
   /// Puts a (header-only) 3840x2160 PNG in the library. Call inside runAsync.

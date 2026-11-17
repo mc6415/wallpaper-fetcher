@@ -1,0 +1,43 @@
+{
+  "image": {
+    "title": "File:International hot air balloon festival in leon guanajuato mexico 2012.jpg",
+    "thumbnail": {
+      "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/af/International_hot_air_balloon_festival_in_leon_guanajuato_mexico_2012.jpg/960px-International_hot_air_balloon_festival_in_leon_guanajuato_mexico_2012.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "width": 640,
+      "height": 920
+    },
+    "image": {
+      "source": "https://upload.wikimedia.org/wikipedia/commons/a/af/International_hot_air_balloon_festival_in_leon_guanajuato_mexico_2012.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "width": 3332,
+      "height": 4792
+    },
+    "file_page": "https://commons.wikimedia.org/wiki/File:International_hot_air_balloon_festival_in_leon_guanajuato_mexico_2012.jpg",
+    "artist": {
+      "html": "<a href=\"//commons.wikimedia.org/wiki/User:Tomascastelazo\" title=\"User:Tomascastelazo\">Tomascastelazo</a>",
+      "text": "Tomascastelazo",
+      "name": "Tomascastelazo",
+      "user_page": "https://commons.wikimedia.org/wiki/User:Tomascastelazo"
+    },
+    "credit": {
+      "html": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+      "text": "Own work"
+    },
+    "license": {
+      "type": "CC BY-SA 3.0",
+      "code": "cc-by-sa-3.0",
+      "url": "https://creativecommons.org/licenses/by-sa/3.0"
+    },
+    "description": {
+      "html": "<a rel=\"mw:WikiLink/Interwiki\" href=\"https://en.wikipedia.org/wiki/List%20of%20hot%20air%20balloon%20festivals\" title=\"en:List of hot air balloon festivals\" class=\"extiw\">International Air Balloon Festival</a> in <a rel=\"mw:WikiLink/Interwiki\" href=\"https://en.wikipedia.org/wiki/Leon,%20%20Guanajuato,%20Mexico\" title=\"w:Leon,  Guanajuato, Mexico\" class=\"extiw\">Leon,  Guanajuato, Mexico</a>, 2012",
+      "text": "International Air Balloon Festival in Leon,  Guanajuato, Mexico, 2012",
+      "lang": "en"
+    },
+    "wb_entity_id": "M22730234",
+    "structured": {
+      "captions": {
+        "zh-hant": "2012\u5e74\u58a8\u897f\u54e5\u74dc\u7d0d\u83ef\u6258\u7345\u5b50\u57ce\u570b\u969b\u71b1\u6c23\u7403\u7bc0",
+        "fr": "Festival international des ballons \u00e0 air chaud, \u00e0 Leon (Guanajuato), Mexique, 2012."
+      }
+    }
+  }
+}

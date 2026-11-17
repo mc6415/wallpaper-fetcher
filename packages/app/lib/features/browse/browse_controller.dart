@@ -11,6 +11,7 @@ final class BrowseState {
     this.total,
     this.loading = false,
     this.error,
+    this.needsApiKey = false,
   });
 
   static const _keep = Object();
@@ -24,6 +25,9 @@ final class BrowseState {
   /// A message for the user when the last request failed.
   final String? error;
 
+  /// The source has no key (or rejected it): point the user at Settings.
+  final bool needsApiKey;
+
   bool get hasMore => nextCursor != null;
 
   BrowseState copyWith({
@@ -32,6 +36,7 @@ final class BrowseState {
     Object? total = _keep,
     bool? loading,
     Object? error = _keep,
+    bool? needsApiKey,
   }) => BrowseState(
     query: query,
     items: items ?? this.items,
@@ -39,6 +44,7 @@ final class BrowseState {
     total: identical(total, _keep) ? this.total : total as int?,
     loading: loading ?? this.loading,
     error: identical(error, _keep) ? this.error : error as String?,
+    needsApiKey: needsApiKey ?? this.needsApiKey,
   );
 }
 
@@ -49,13 +55,19 @@ class BrowseController extends Notifier<BrowseState> {
   final String sourceId;
   int _generation = 0;
 
+  /// Pages fetched in a row when filters leave a page empty, before giving up
+  /// until the user scrolls.
+  static const _maxEmptyPages = 4;
+
   WallpaperSource get _source => ref.read(sourcesProvider)[sourceId]!;
 
   @override
   BrowseState build() {
+    final caps = _source.capabilities;
     final query = SearchQuery(
-      orientation: WallpaperOrientation.landscape,
-      minResolution: ref.read(minResolutionProvider),
+      orientation: caps.supportsOrientation ? WallpaperOrientation.landscape : null,
+      minResolution: caps.supportsMinResolution ? ref.read(minResolutionProvider) : null,
+      sort: caps.sortModes.firstOrNull ?? SortMode.toplist,
     );
     Future.microtask(() => _load(query, reset: true));
     return BrowseState(query: query, loading: true);
@@ -72,24 +84,36 @@ class BrowseController extends Notifier<BrowseState> {
 
   Future<void> _load(SearchQuery query, {required bool reset}) async {
     final generation = ++_generation;
-    final cursor = reset ? null : state.nextCursor;
+    var cursor = reset ? null : state.nextCursor;
     state = reset
         ? BrowseState(query: query, loading: true)
         : state.copyWith(loading: true, error: null);
     try {
-      final page = await _source.search(query, cursor: cursor);
-      if (!ref.mounted || generation != _generation) return;
+      // Filters applied by the source (sizes, shapes) can leave a page empty
+      // while more remain; keep going a little so the grid isn't blank.
+      final found = <RemoteWallpaper>[];
+      SourcePage page;
+      var pages = 0;
+      do {
+        page = await _source.search(query, cursor: cursor);
+        if (!ref.mounted || generation != _generation) return;
+        found.addAll(page.items);
+        cursor = page.nextCursor;
+        pages++;
+      } while (found.isEmpty && cursor != null && pages < _maxEmptyPages);
+
       final seen = {for (final w in state.items) w.key};
       state = state.copyWith(
-        items: [...state.items, ...page.items.where((w) => seen.add(w.key))],
+        items: [...state.items, ...found.where((w) => seen.add(w.key))],
         nextCursor: page.nextCursor,
         total: page.total,
         loading: false,
         error: null,
+        needsApiKey: false,
       );
     } on SourceException catch (e) {
       if (!ref.mounted || generation != _generation) return;
-      state = state.copyWith(loading: false, error: e.message);
+      state = state.copyWith(loading: false, error: e.message, needsApiKey: e.needsApiKey);
     }
   }
 }

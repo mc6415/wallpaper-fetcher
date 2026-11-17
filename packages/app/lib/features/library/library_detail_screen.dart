@@ -9,6 +9,7 @@ import '../../platform/files.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../apply/apply_sheet.dart';
+import 'history_screen.dart';
 import 'image_viewer.dart';
 
 class LibraryDetailScreen extends ConsumerWidget {
@@ -67,8 +68,7 @@ class _Detail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final library = ref.watch(libraryProvider);
     final path = library.absolutePath(item);
-    final sourceName = ref.watch(sourcesProvider)[item.source]?.name ??
-        (item.source == Sidecar.localSource ? 'your folder' : item.source);
+    final name = sourceName(ref, item.source);
 
     final panel = Padding(
       padding: const EdgeInsets.all(16),
@@ -84,12 +84,13 @@ class _Detail extends ConsumerWidget {
           _Info(Icons.aspect_ratio, formatSize(item.width, item.height)),
           _Info(Icons.insert_drive_file_outlined, formatBytes(item.fileSize)),
           _Info(
-            Icons.public,
-            item.creditLine ?? 'From $sourceName',
+            Icons.person_outline,
+            item.creditLine ?? 'From $name',
             onTap: item.authorUrl == null ? null : () => openWebPage(item.authorUrl!),
           ),
+          if (item.licence case final licence?) _Info(Icons.gavel_outlined, licence),
           if (item.sourcePageUrl case final page?)
-            _Info(Icons.open_in_new, 'View on $sourceName', onTap: () => openWebPage(page)),
+            _Info(Icons.open_in_new, 'View on $name', onTap: () => openWebPage(page)),
           _Info(Icons.calendar_today_outlined, 'Added ${formatDate(item.addedAt)}'),
           _Info(
             Icons.history,
@@ -97,14 +98,16 @@ class _Detail extends ConsumerWidget {
                 ? 'Not used yet'
                 : 'Used ${item.applyCount} time${item.applyCount == 1 ? '' : 's'}, last on ${formatDate(item.lastAppliedAt!)}',
           ),
-          if (item.tags.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [for (final t in item.tags) Chip(label: Text(t), visualDensity: VisualDensity.compact)],
-            ),
-          ],
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            secondary: const Icon(Icons.visibility_off_outlined, size: 20),
+            title: const Text('Leave out of rotation'),
+            value: item.isHidden,
+            onChanged: (v) => library.setHidden(item, v),
+          ),
+          const SizedBox(height: 8),
+          _TagsEditor(item: item),
           const SizedBox(height: 16),
           OutlinedButton.icon(
             onPressed: () => showInFolder(path),
@@ -122,7 +125,17 @@ class _Detail extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: Text(item.title ?? '${sourceName[0].toUpperCase()}${sourceName.substring(1)} · ${item.sourceId}')),
+      appBar: AppBar(
+        title: Text(itemName(item)),
+        actions: [
+          IconButton(
+            tooltip: item.isFavourite ? 'Remove from favourites' : 'Add to favourites',
+            icon: Icon(item.isFavourite ? Icons.favorite : Icons.favorite_border),
+            onPressed: () => library.setFavourite(item, !item.isFavourite),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final image = ImageViewer(image: FileImage(File(path)));
@@ -131,7 +144,7 @@ class _Detail extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(child: image),
-                SizedBox(width: 340, child: SingleChildScrollView(child: panel)),
+                SizedBox(width: 360, child: SingleChildScrollView(child: panel)),
               ],
             );
           }
@@ -140,6 +153,83 @@ class _Detail extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Tags as removable chips; tapping one shows the library filtered by it.
+class _TagsEditor extends ConsumerWidget {
+  const _TagsEditor({required this.item});
+
+  final LibraryItem item;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final library = ref.read(libraryProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Tags', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final tag in item.tags)
+              InputChip(
+                label: Text(tag),
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Show wallpapers tagged "$tag"',
+                onPressed: () {
+                  ref.read(libraryFilterProvider.notifier).set(LibraryFilter(tag: tag));
+                  context.go('/library');
+                },
+                onDeleted: () => library.setTags(item, [...item.tags]..remove(tag)),
+              ),
+            ActionChip(
+              avatar: const Icon(Icons.add, size: 18),
+              label: const Text('Add tag'),
+              visualDensity: VisualDensity.compact,
+              onPressed: () async {
+                final tag = await showDialog<String>(context: context, builder: (_) => const _AddTagDialog());
+                if (tag != null && tag.trim().isNotEmpty) await library.setTags(item, [...item.tags, tag]);
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AddTagDialog extends StatefulWidget {
+  const _AddTagDialog();
+
+  @override
+  State<_AddTagDialog> createState() => _AddTagDialogState();
+}
+
+class _AddTagDialogState extends State<_AddTagDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Add tag'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      decoration: const InputDecoration(hintText: 'e.g. mountains'),
+      onSubmitted: (value) => Navigator.pop(context, value),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      FilledButton(onPressed: () => Navigator.pop(context, _controller.text), child: const Text('Add')),
+    ],
+  );
 }
 
 class _Info extends StatelessWidget {
@@ -154,7 +244,7 @@ class _Info extends StatelessWidget {
     dense: true,
     contentPadding: EdgeInsets.zero,
     leading: Icon(icon, size: 20),
-    title: Text(text),
+    title: Text(text, maxLines: 4, overflow: TextOverflow.ellipsis),
     trailing: onTap == null ? null : const Icon(Icons.open_in_new, size: 16),
     onTap: onTap,
   );

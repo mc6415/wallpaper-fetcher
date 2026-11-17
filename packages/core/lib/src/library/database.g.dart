@@ -1344,8 +1344,39 @@ class $ApplyHistoryTable extends ApplyHistory
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _viaHistoryMeta = const VerificationMeta(
+    'viaHistory',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, wallpaperId, appliedAt, target];
+  late final GeneratedColumn<bool> viaHistory = GeneratedColumn<bool>(
+    'via_history',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("via_history" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<FitMode?, String> fit =
+      GeneratedColumn<String>(
+        'fit',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<FitMode?>($ApplyHistoryTable.$converterfitn);
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    wallpaperId,
+    appliedAt,
+    target,
+    viaHistory,
+    fit,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1386,6 +1417,12 @@ class $ApplyHistoryTable extends ApplyHistory
     } else if (isInserting) {
       context.missing(_targetMeta);
     }
+    if (data.containsKey('via_history')) {
+      context.handle(
+        _viaHistoryMeta,
+        viaHistory.isAcceptableOrUnknown(data['via_history']!, _viaHistoryMeta),
+      );
+    }
     return context;
   }
 
@@ -1411,6 +1448,16 @@ class $ApplyHistoryTable extends ApplyHistory
         DriftSqlType.string,
         data['${effectivePrefix}target'],
       )!,
+      viaHistory: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}via_history'],
+      )!,
+      fit: $ApplyHistoryTable.$converterfitn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}fit'],
+        ),
+      ),
     );
   }
 
@@ -1418,6 +1465,11 @@ class $ApplyHistoryTable extends ApplyHistory
   $ApplyHistoryTable createAlias(String alias) {
     return $ApplyHistoryTable(attachedDatabase, alias);
   }
+
+  static JsonTypeConverter2<FitMode, String, String> $converterfit =
+      const EnumNameConverter<FitMode>(FitMode.values);
+  static JsonTypeConverter2<FitMode?, String?, String?> $converterfitn =
+      JsonTypeConverter2.asNullable($converterfit);
 }
 
 class ApplyHistoryData extends DataClass
@@ -1428,11 +1480,18 @@ class ApplyHistoryData extends DataClass
 
   /// [DisplayTarget.id], e.g. `DP-1` or `lock`.
   final String target;
+
+  /// Applied by stepping back/forward through history; such entries don't
+  /// become new history positions themselves.
+  final bool viaHistory;
+  final FitMode? fit;
   const ApplyHistoryData({
     required this.id,
     this.wallpaperId,
     required this.appliedAt,
     required this.target,
+    required this.viaHistory,
+    this.fit,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1443,6 +1502,12 @@ class ApplyHistoryData extends DataClass
     }
     map['applied_at'] = Variable<DateTime>(appliedAt);
     map['target'] = Variable<String>(target);
+    map['via_history'] = Variable<bool>(viaHistory);
+    if (!nullToAbsent || fit != null) {
+      map['fit'] = Variable<String>(
+        $ApplyHistoryTable.$converterfitn.toSql(fit),
+      );
+    }
     return map;
   }
 
@@ -1454,6 +1519,8 @@ class ApplyHistoryData extends DataClass
           : Value(wallpaperId),
       appliedAt: Value(appliedAt),
       target: Value(target),
+      viaHistory: Value(viaHistory),
+      fit: fit == null && nullToAbsent ? const Value.absent() : Value(fit),
     );
   }
 
@@ -1467,6 +1534,10 @@ class ApplyHistoryData extends DataClass
       wallpaperId: serializer.fromJson<int?>(json['wallpaperId']),
       appliedAt: serializer.fromJson<DateTime>(json['appliedAt']),
       target: serializer.fromJson<String>(json['target']),
+      viaHistory: serializer.fromJson<bool>(json['viaHistory']),
+      fit: $ApplyHistoryTable.$converterfitn.fromJson(
+        serializer.fromJson<String?>(json['fit']),
+      ),
     );
   }
   @override
@@ -1477,6 +1548,10 @@ class ApplyHistoryData extends DataClass
       'wallpaperId': serializer.toJson<int?>(wallpaperId),
       'appliedAt': serializer.toJson<DateTime>(appliedAt),
       'target': serializer.toJson<String>(target),
+      'viaHistory': serializer.toJson<bool>(viaHistory),
+      'fit': serializer.toJson<String?>(
+        $ApplyHistoryTable.$converterfitn.toJson(fit),
+      ),
     };
   }
 
@@ -1485,11 +1560,15 @@ class ApplyHistoryData extends DataClass
     Value<int?> wallpaperId = const Value.absent(),
     DateTime? appliedAt,
     String? target,
+    bool? viaHistory,
+    Value<FitMode?> fit = const Value.absent(),
   }) => ApplyHistoryData(
     id: id ?? this.id,
     wallpaperId: wallpaperId.present ? wallpaperId.value : this.wallpaperId,
     appliedAt: appliedAt ?? this.appliedAt,
     target: target ?? this.target,
+    viaHistory: viaHistory ?? this.viaHistory,
+    fit: fit.present ? fit.value : this.fit,
   );
   ApplyHistoryData copyWithCompanion(ApplyHistoryCompanion data) {
     return ApplyHistoryData(
@@ -1499,6 +1578,10 @@ class ApplyHistoryData extends DataClass
           : this.wallpaperId,
       appliedAt: data.appliedAt.present ? data.appliedAt.value : this.appliedAt,
       target: data.target.present ? data.target.value : this.target,
+      viaHistory: data.viaHistory.present
+          ? data.viaHistory.value
+          : this.viaHistory,
+      fit: data.fit.present ? data.fit.value : this.fit,
     );
   }
 
@@ -1508,13 +1591,16 @@ class ApplyHistoryData extends DataClass
           ..write('id: $id, ')
           ..write('wallpaperId: $wallpaperId, ')
           ..write('appliedAt: $appliedAt, ')
-          ..write('target: $target')
+          ..write('target: $target, ')
+          ..write('viaHistory: $viaHistory, ')
+          ..write('fit: $fit')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, wallpaperId, appliedAt, target);
+  int get hashCode =>
+      Object.hash(id, wallpaperId, appliedAt, target, viaHistory, fit);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1522,7 +1608,9 @@ class ApplyHistoryData extends DataClass
           other.id == this.id &&
           other.wallpaperId == this.wallpaperId &&
           other.appliedAt == this.appliedAt &&
-          other.target == this.target);
+          other.target == this.target &&
+          other.viaHistory == this.viaHistory &&
+          other.fit == this.fit);
 }
 
 class ApplyHistoryCompanion extends UpdateCompanion<ApplyHistoryData> {
@@ -1530,17 +1618,23 @@ class ApplyHistoryCompanion extends UpdateCompanion<ApplyHistoryData> {
   final Value<int?> wallpaperId;
   final Value<DateTime> appliedAt;
   final Value<String> target;
+  final Value<bool> viaHistory;
+  final Value<FitMode?> fit;
   const ApplyHistoryCompanion({
     this.id = const Value.absent(),
     this.wallpaperId = const Value.absent(),
     this.appliedAt = const Value.absent(),
     this.target = const Value.absent(),
+    this.viaHistory = const Value.absent(),
+    this.fit = const Value.absent(),
   });
   ApplyHistoryCompanion.insert({
     this.id = const Value.absent(),
     this.wallpaperId = const Value.absent(),
     required DateTime appliedAt,
     required String target,
+    this.viaHistory = const Value.absent(),
+    this.fit = const Value.absent(),
   }) : appliedAt = Value(appliedAt),
        target = Value(target);
   static Insertable<ApplyHistoryData> custom({
@@ -1548,12 +1642,16 @@ class ApplyHistoryCompanion extends UpdateCompanion<ApplyHistoryData> {
     Expression<int>? wallpaperId,
     Expression<DateTime>? appliedAt,
     Expression<String>? target,
+    Expression<bool>? viaHistory,
+    Expression<String>? fit,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (wallpaperId != null) 'wallpaper_id': wallpaperId,
       if (appliedAt != null) 'applied_at': appliedAt,
       if (target != null) 'target': target,
+      if (viaHistory != null) 'via_history': viaHistory,
+      if (fit != null) 'fit': fit,
     });
   }
 
@@ -1562,12 +1660,16 @@ class ApplyHistoryCompanion extends UpdateCompanion<ApplyHistoryData> {
     Value<int?>? wallpaperId,
     Value<DateTime>? appliedAt,
     Value<String>? target,
+    Value<bool>? viaHistory,
+    Value<FitMode?>? fit,
   }) {
     return ApplyHistoryCompanion(
       id: id ?? this.id,
       wallpaperId: wallpaperId ?? this.wallpaperId,
       appliedAt: appliedAt ?? this.appliedAt,
       target: target ?? this.target,
+      viaHistory: viaHistory ?? this.viaHistory,
+      fit: fit ?? this.fit,
     );
   }
 
@@ -1586,6 +1688,14 @@ class ApplyHistoryCompanion extends UpdateCompanion<ApplyHistoryData> {
     if (target.present) {
       map['target'] = Variable<String>(target.value);
     }
+    if (viaHistory.present) {
+      map['via_history'] = Variable<bool>(viaHistory.value);
+    }
+    if (fit.present) {
+      map['fit'] = Variable<String>(
+        $ApplyHistoryTable.$converterfitn.toSql(fit.value),
+      );
+    }
     return map;
   }
 
@@ -1595,7 +1705,9 @@ class ApplyHistoryCompanion extends UpdateCompanion<ApplyHistoryData> {
           ..write('id: $id, ')
           ..write('wallpaperId: $wallpaperId, ')
           ..write('appliedAt: $appliedAt, ')
-          ..write('target: $target')
+          ..write('target: $target, ')
+          ..write('viaHistory: $viaHistory, ')
+          ..write('fit: $fit')
           ..write(')'))
         .toString();
   }
@@ -2510,6 +2622,8 @@ typedef $$ApplyHistoryTableCreateCompanionBuilder =
       Value<int?> wallpaperId,
       required DateTime appliedAt,
       required String target,
+      Value<bool> viaHistory,
+      Value<FitMode?> fit,
     });
 typedef $$ApplyHistoryTableUpdateCompanionBuilder =
     ApplyHistoryCompanion Function({
@@ -2517,6 +2631,8 @@ typedef $$ApplyHistoryTableUpdateCompanionBuilder =
       Value<int?> wallpaperId,
       Value<DateTime> appliedAt,
       Value<String> target,
+      Value<bool> viaHistory,
+      Value<FitMode?> fit,
     });
 
 final class $$ApplyHistoryTableReferences
@@ -2566,6 +2682,17 @@ class $$ApplyHistoryTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get viaHistory => $composableBuilder(
+    column: $table.viaHistory,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<FitMode?, FitMode, String> get fit =>
+      $composableBuilder(
+        column: $table.fit,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
   $$WallpapersTableFilterComposer get wallpaperId {
     final $$WallpapersTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -2614,6 +2741,16 @@ class $$ApplyHistoryTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get viaHistory => $composableBuilder(
+    column: $table.viaHistory,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fit => $composableBuilder(
+    column: $table.fit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$WallpapersTableOrderingComposer get wallpaperId {
     final $$WallpapersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -2655,6 +2792,14 @@ class $$ApplyHistoryTableAnnotationComposer
 
   GeneratedColumn<String> get target =>
       $composableBuilder(column: $table.target, builder: (column) => column);
+
+  GeneratedColumn<bool> get viaHistory => $composableBuilder(
+    column: $table.viaHistory,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<FitMode?, String> get fit =>
+      $composableBuilder(column: $table.fit, builder: (column) => column);
 
   $$WallpapersTableAnnotationComposer get wallpaperId {
     final $$WallpapersTableAnnotationComposer composer = $composerBuilder(
@@ -2712,11 +2857,15 @@ class $$ApplyHistoryTableTableManager
                 Value<int?> wallpaperId = const Value.absent(),
                 Value<DateTime> appliedAt = const Value.absent(),
                 Value<String> target = const Value.absent(),
+                Value<bool> viaHistory = const Value.absent(),
+                Value<FitMode?> fit = const Value.absent(),
               }) => ApplyHistoryCompanion(
                 id: id,
                 wallpaperId: wallpaperId,
                 appliedAt: appliedAt,
                 target: target,
+                viaHistory: viaHistory,
+                fit: fit,
               ),
           createCompanionCallback:
               ({
@@ -2724,11 +2873,15 @@ class $$ApplyHistoryTableTableManager
                 Value<int?> wallpaperId = const Value.absent(),
                 required DateTime appliedAt,
                 required String target,
+                Value<bool> viaHistory = const Value.absent(),
+                Value<FitMode?> fit = const Value.absent(),
               }) => ApplyHistoryCompanion.insert(
                 id: id,
                 wallpaperId: wallpaperId,
                 appliedAt: appliedAt,
                 target: target,
+                viaHistory: viaHistory,
+                fit: fit,
               ),
           withReferenceMapper: (p0) => p0
               .map(
