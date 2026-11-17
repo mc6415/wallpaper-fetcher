@@ -70,7 +70,7 @@ desktop monitors and the Fold's screens use the same model.
 ## Decisions
 - Desktop default: a different image per monitor. Default minimum resolution 3840x2160.
 - Fold: a separate image per screen if Samsung's undocumented cover-screen flag works
-  (tested at the start of Phase 5); otherwise one image with a per-screen crop.
+  (tested at the start of Phase 4); otherwise one image with a per-screen crop.
   Android's public API (checked against SDK 36 and 37) only offers `FLAG_SYSTEM` and
   `FLAG_LOCK`.
 - Desktop rotation runs from the tray icon.
@@ -81,6 +81,7 @@ desktop monitors and the Fold's screens use the same model.
   shape match beats variety when picking. Next after Previous moves forward through
   history before picking anew. The CLI talks to the running app over a Unix socket and
   falls back to opening the library itself; the same `CommandHandler` serves both.
+- Phase order: Android is Phase 4 and Windows Phase 5 (swapped 2026-11-17).
 - Phase 2: Wikimedia Commons Picture of the Day replaces NASA APOD (APOD API broken);
   Wallhaven searches default to the General category only. Pexels dropped: its API
   guidelines forbid wallpaper apps. Unsplash treats setting a wallpaper as a download,
@@ -100,9 +101,9 @@ desktop monitors and the Fold's screens use the same model.
 | flutter_secure_storage | API keys (KWallet on KDE) | 2 |
 | tray_manager 0.9 + window_manager 0.7 | Tray icon, hide to tray on close (their new nativeapi-based APIs, not the deprecated `legacy` bridge) | 3 |
 | args | CLI parsing | 3 |
-| win32 | Windows wallpaper COM API | 4 |
-| dynamic_color, workmanager | Material You, Android background rotation | 5 |
+| win32 | Windows wallpaper COM API | 5 |
+| dynamic_color, workmanager | Material You, Android background rotation | 4 |
 
 ## Known risks
-1. Fold cover screen relies on an undocumented Samsung flag (Phase 5).
+1. Fold cover screen relies on an undocumented Samsung flag (Phase 4).
 2. API key storage on KDE needs KWallet's Secret Service to be enabled (check in Phase 2).

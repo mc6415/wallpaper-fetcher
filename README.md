@@ -13,16 +13,16 @@ plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how it's put togethe
 
 | | KDE Plasma | Other Linux desktops | Windows | Android |
 |---|---|---|---|---|
-| Browse & download (Wallhaven, Unsplash, Bing, Wikimedia) | ✅ | ✅ | Phase 4 | Phase 5 |
-| Library: favourites, tags, filters, search, folder import | ✅ | ✅ | Phase 4 | Phase 5 |
-| Set wallpaper per monitor, Previous/Next history | ✅ | ✅ untested* | Phase 4 | Phase 5 |
-| Set lock screen | ✅ | GNOME, untested* | Phase 4 | Phase 5 |
-| Rotation, tray icon, start on login, command line | ✅ | ✅ untested* | Phase 4 | Phase 5 |
+| Browse & download (Wallhaven, Unsplash, Bing, Wikimedia) | ✅ | ✅ | Phase 5 | Phase 4 |
+| Library: favourites, tags, filters, search, folder import | ✅ | ✅ | Phase 5 | Phase 4 |
+| Set wallpaper per monitor, Previous/Next history | ✅ | ✅ untested* | Phase 5 | Phase 4 |
+| Set lock screen | ✅ | GNOME, untested* | Phase 5 | Phase 4 |
+| Rotation, tray icon, start on login, command line | ✅ | ✅ untested* | Phase 5 | Phase 4 |
 
 \* Built from each desktop tool's documentation and covered by tests against sample
 output, but not yet run on a real GNOME, Cinnamon, MATE, Xfce, Sway, Hyprland or feh setup.
 
-Coming next (Phase 4): Windows.
+Coming next (Phase 4): Android, then Windows in Phase 5.
 
 ## Using it
 

@@ -176,7 +176,8 @@ Commit at the end of each phase with a clear message and keep the README current
 - Phase 2: Unsplash, Bing, Wikimedia Picture of the Day; favourites, tags, filters; history;
   local import.
 - Phase 3: rotation, system tray, start on login; other Linux desktops.
-- Phase 4: Windows.
-- Phase 5: Android.
+- Phase 4: Android. (Swapped with Windows on 2026-11-17: Android can be tested on this
+  machine with the Fold and the emulator; Windows needs a Windows machine or CI.)
+- Phase 5: Windows.
 - Phase 6: packaging and CI: GitHub Actions producing a Linux AppImage or Flatpak, a Windows
   installer (MSIX or Inno Setup), and an Android APK.
