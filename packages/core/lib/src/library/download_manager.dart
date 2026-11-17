@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:logging/logging.dart';
 
 import '../models/remote_wallpaper.dart';
+import '../net/retry_interceptor.dart';
 import '../sources/wallpaper_source.dart';
 import '../util/semaphore.dart';
 import 'database.dart';
@@ -45,11 +46,18 @@ class DownloadManager {
     required this._dio,
     required this._library,
     int concurrency = 3,
-  }) : _slots = Semaphore(concurrency);
+    Future<void> Function(Duration)? sleep,
+  }) : _slots = Semaphore(concurrency),
+       _sleep = sleep ?? Future<void>.delayed;
+
+  /// Retries when a server says it's busy (429/503) before sending anything.
+  static const _maxBusyRetries = 2;
+  static const _maxBusyWait = Duration(seconds: 30);
 
   final Dio _dio;
   final WallpaperLibrary _library;
   final Semaphore _slots;
+  final Future<void> Function(Duration) _sleep;
   final _inFlight = <String, Future<LibraryItem>>{};
   final _cancelTokens = <String, CancelToken>{};
   final _progress = <String, DownloadProgress>{};
@@ -98,25 +106,39 @@ class DownloadManager {
       final token = _cancelTokens[key] = CancelToken();
       var lastFraction = -1.0;
       _set(key, DownloadProgress(DownloadStatus.downloading, total: wallpaper.fileSize));
-      await _dio.download(
-        ticket.url.toString(),
-        part.path,
-        cancelToken: token,
-        options: Options(headers: ticket.headers, extra: {'noRetry': true}),
-        onReceiveProgress: (received, total) {
-          final progress = DownloadProgress(
-            DownloadStatus.downloading,
-            received: received,
-            total: total > 0 ? total : wallpaper.fileSize,
+      for (var attempt = 0; ; attempt++) {
+        try {
+          await _dio.download(
+            ticket.url.toString(),
+            part.path,
+            cancelToken: token,
+            options: Options(headers: ticket.headers, extra: {'noRetry': true}),
+            onReceiveProgress: (received, total) {
+              final progress = DownloadProgress(
+                DownloadStatus.downloading,
+                received: received,
+                total: total > 0 ? total : wallpaper.fileSize,
+              );
+              // Every 2% is plenty for a progress ring.
+              final f = progress.fraction ?? 0;
+              if (f - lastFraction >= 0.02 || f >= 1) {
+                lastFraction = f;
+                _set(key, progress);
+              }
+            },
           );
-          // Every 2% is plenty for a progress ring.
-          final f = progress.fraction ?? 0;
-          if (f - lastFraction >= 0.02 || f >= 1) {
-            lastFraction = f;
-            _set(key, progress);
-          }
-        },
-      );
+          break;
+        } on DioException catch (e) {
+          // A busy reply comes before any image data, so trying again is safe.
+          final status = e.response?.statusCode;
+          final busy = e.type == DioExceptionType.badResponse && (status == 429 || status == 503);
+          final wait = RetryInterceptor.retryAfterOf(e.response) ?? Duration(seconds: 2 << attempt);
+          if (!busy || attempt >= _maxBusyRetries || wait > _maxBusyWait) rethrow;
+          _log.info('${source.name} is busy (HTTP $status); retrying ${wallpaper.key} in ${wait.inSeconds}s');
+          _set(key, const DownloadProgress(DownloadStatus.queued));
+          await _sleep(wait);
+        }
+      }
 
       final hash = await hashFile(part.path);
       final duplicate = await _library.byHash(hash);

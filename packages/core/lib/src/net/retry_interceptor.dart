@@ -16,6 +16,7 @@ class RetryInterceptor extends Interceptor {
     this.maxRetries = 3,
     this.baseDelay = const Duration(seconds: 1),
     this.maxDelay = const Duration(seconds: 30),
+    this.maxRetryAfter = const Duration(seconds: 15),
     Future<void> Function(Duration)? sleep,
   }) : _sleep = sleep ?? Future<void>.delayed;
 
@@ -25,6 +26,10 @@ class RetryInterceptor extends Interceptor {
   final int maxRetries;
   final Duration baseDelay;
   final Duration maxDelay;
+
+  /// If the server asks us to wait longer than this, give up and let the user
+  /// see the message rather than leaving a spinner running for minutes.
+  final Duration maxRetryAfter;
   final Future<void> Function(Duration) _sleep;
 
   @override
@@ -39,6 +44,8 @@ class RetryInterceptor extends Interceptor {
         !shouldRetry(err)) {
       return handler.next(err);
     }
+    final retryAfter = retryAfterOf(err.response);
+    if (retryAfter != null && retryAfter > maxRetryAfter) return handler.next(err);
     final delay = _delayFor(err.response, attempt);
     _log.info(
       'Retrying ${options.uri.host}${options.uri.path} in ${delay.inMilliseconds}ms '
@@ -66,11 +73,14 @@ class RetryInterceptor extends Interceptor {
     _ => false,
   };
 
+  /// The `Retry-After` header in seconds, if present.
+  static Duration? retryAfterOf(Response<Object?>? response) {
+    final seconds = int.tryParse(response?.headers.value('retry-after') ?? '');
+    return seconds == null ? null : Duration(seconds: seconds);
+  }
+
   Duration _delayFor(Response<Object?>? response, int attempt) {
-    final retryAfter = int.tryParse(response?.headers.value('retry-after') ?? '');
-    final delay = retryAfter != null
-        ? Duration(seconds: retryAfter)
-        : baseDelay * pow(2, attempt).toInt();
+    final delay = retryAfterOf(response) ?? baseDelay * pow(2, attempt).toInt();
     return delay > maxDelay ? maxDelay : delay;
   }
 }

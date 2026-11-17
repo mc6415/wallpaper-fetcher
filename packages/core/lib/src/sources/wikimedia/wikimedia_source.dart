@@ -19,8 +19,12 @@ class WikimediaSource implements WallpaperSource {
     DateTime Function()? today,
     this.daysPerPage = 10,
     RateLimiter? limiter,
+    RateLimiter? burstLimiter,
   }) : _today = today ?? DateTime.now,
-       _limiter = limiter ?? RateLimiter(maxRequests: 400, window: const Duration(hours: 1));
+       _limiter = limiter ?? RateLimiter(maxRequests: 400, window: const Duration(hours: 1)),
+       // Wikimedia answers bursts with 429s (seen at ~20 requests in a few
+       // seconds), so pace them as well as capping the hourly total.
+       _burst = burstLimiter ?? RateLimiter(maxRequests: 10, window: const Duration(seconds: 10));
 
   static const sourceId = 'wikimedia';
   static const feedBase = 'https://api.wikimedia.org/feed/v1/wikipedia/en/featured';
@@ -35,7 +39,12 @@ class WikimediaSource implements WallpaperSource {
   final DateTime Function() _today;
   final int daysPerPage;
   final RateLimiter _limiter;
-  final _slots = Semaphore(4);
+  final RateLimiter _burst;
+  final _slots = Semaphore(2);
+
+  /// Past Pictures of the Day never change, so each day is fetched once per
+  /// run; changing filters re-filters these instead of asking again.
+  final _days = <String, RemoteWallpaper?>{};
 
   @override
   String get id => sourceId;
@@ -97,16 +106,22 @@ class WikimediaSource implements WallpaperSource {
   }
 
   Future<RemoteWallpaper?> _fetchDay(DateTime day) async {
+    final key = _isoDate(day);
+    if (_days.containsKey(key)) return _days[key];
+    await _burst.acquire();
     await _limiter.acquire();
     final path = '${day.year}/${_two(day.month)}/${_two(day.day)}';
     try {
       final response = await _dio.get<Object?>('$feedBase/$path');
       final data = response.data;
-      if (data is! Map) return null;
-      return parseFeed(data.cast<String, Object?>(), day);
+      return _days[key] = data is Map ? parseFeed(data.cast<String, Object?>(), day) : null;
     } on DioException catch (e) {
-      // Today's feed may not exist yet; other days just get skipped.
-      if (e.response?.statusCode == 404) return null;
+      if (e.response?.statusCode == 404) {
+        // Today's feed may not exist yet, so only remember older gaps.
+        final now = _today().toUtc();
+        if (day.isBefore(DateTime.utc(now.year, now.month, now.day))) _days[key] = null;
+        return null;
+      }
       throw SourceException.fromDio(name, e);
     }
   }
