@@ -50,14 +50,42 @@ final class PlasmaScreen {
 /// Sets wallpapers on KDE Plasma 6: each monitor through Plasma's scripting
 /// API over D-Bus, the lock screen through `kscreenlockerrc`.
 class KdeSetter implements WallpaperSetter {
-  KdeSetter({PlasmaShell? shell, ProcessRunner? runProcess})
-    : _shell = shell ?? DBusPlasmaShell(),
-      _run = runProcess ?? Process.run;
+  /// [preferBlur] is asked on every apply (so a settings change counts
+  /// straight away); when it says yes and [blurPlugin] is installed, screens
+  /// are switched to it.
+  KdeSetter({
+    PlasmaShell? shell,
+    ProcessRunner? runProcess,
+    this._preferBlur,
+    bool Function()? blurPluginInstalled,
+  }) : _shell = shell ?? DBusPlasmaShell(),
+       _run = runProcess ?? Process.run,
+       _blurInstalled = blurPluginInstalled ?? isBlurPluginInstalled;
 
   static const lockTargetId = 'lock';
 
+  /// "Blurred Wallpaper" (AUR `plasma6-wallpapers-blurredwallpaper`): an
+  /// image wallpaper that blurs while a window is active.
+  static const blurPlugin = 'a2n.blur';
+
   final PlasmaShell _shell;
   final ProcessRunner _run;
+  final Future<bool> Function()? _preferBlur;
+  final bool Function() _blurInstalled;
+
+  /// Whether [blurPlugin] is installed, for the user or system-wide.
+  bool get blurAvailable => _blurInstalled();
+
+  /// Looks for the plugin's package in the XDG data directories, the same
+  /// places Plasma loads wallpaper plugins from.
+  static bool isBlurPluginInstalled({Map<String, String>? environment}) {
+    final env = environment ?? Platform.environment;
+    final home = env['HOME'] ?? '';
+    final dataHome = env['XDG_DATA_HOME'] ?? '$home/.local/share';
+    final dataDirs = (env['XDG_DATA_DIRS'] ?? '').split(':').where((d) => d.isNotEmpty);
+    final dirs = [dataHome, ...(dataDirs.isEmpty ? ['/usr/local/share', '/usr/share'] : dataDirs)];
+    return dirs.any((d) => File('$d/plasma/wallpapers/$blurPlugin/metadata.json').existsSync());
+  }
 
   @override
   String get name => 'KDE Plasma';
@@ -108,7 +136,8 @@ class KdeSetter implements WallpaperSetter {
             (throw WallpaperSetterException('${a.target.label} is no longer connected.'));
         perScreen[index] = a;
       }
-      final output = await _eval(buildApplyScript(perScreen));
+      final blur = (await _preferBlur?.call() ?? false) && _blurInstalled();
+      final output = await _eval(buildApplyScript(perScreen, plugin: blur ? blurPlugin : null));
       final applied = _decodeObject(output)['applied'];
       if (applied is! int || applied < perScreen.length) {
         throw WallpaperSetterException(
@@ -137,8 +166,10 @@ class KdeSetter implements WallpaperSetter {
 
   /// A Plasma script that sets each listed screen's wallpaper. Every desktop
   /// on that screen is updated (one per activity). Prints how many screens it
-  /// updated.
-  static String buildApplyScript(Map<int, Assignment> perScreen) {
+  /// updated. A [plugin] (one of [imagePlugins]) is used on every screen;
+  /// without one, each screen keeps its plugin if it's in [imagePlugins].
+  static String buildApplyScript(Map<int, Assignment> perScreen, {String? plugin}) {
+    assert(plugin == null || imagePlugins.contains(plugin));
     final config = {
       for (final MapEntry(key: index, value: a) in perScreen.entries)
         '$index': {
@@ -149,13 +180,15 @@ class KdeSetter implements WallpaperSetter {
     return '''
 var assignments = ${jsonEncode(config)};
 var imagePlugins = ${jsonEncode(imagePlugins)};
+var forcedPlugin = ${jsonEncode(plugin)};
 var desktopList = desktops();
 var updated = {};
 for (var i = 0; i < desktopList.length; i++) {
   var d = desktopList[i];
   var a = assignments[String(d.screen)];
   if (!a) continue;
-  var plugin = imagePlugins.indexOf(d.wallpaperPlugin) >= 0 ? d.wallpaperPlugin : "org.kde.image";
+  var plugin = forcedPlugin ||
+      (imagePlugins.indexOf(d.wallpaperPlugin) >= 0 ? d.wallpaperPlugin : "org.kde.image");
   if (d.wallpaperPlugin != plugin) d.wallpaperPlugin = plugin;
   d.currentConfigGroup = ["Wallpaper", plugin, "General"];
   d.writeConfig("Image", a.image);

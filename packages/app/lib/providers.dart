@@ -340,6 +340,21 @@ class KeepInTrayNotifier extends Notifier<bool> {
 
 final keepInTrayProvider = NotifierProvider<KeepInTrayNotifier, bool>(KeepInTrayNotifier.new);
 
+/// KDE: put wallpapers on through the Blurred Wallpaper plugin. The setter
+/// reads the stored value each time it applies.
+class KdeBlurNotifier extends Notifier<bool> {
+  @override
+  bool build() =>
+      ref.watch(servicesProvider).initialSettings[SettingsKeys.kdeBlurredWallpaper] == 'true';
+
+  Future<void> set(bool on) async {
+    state = on;
+    await ref.read(servicesProvider).settings.set(SettingsKeys.kdeBlurredWallpaper, on ? 'true' : null);
+  }
+}
+
+final kdeBlurProvider = NotifierProvider<KdeBlurNotifier, bool>(KdeBlurNotifier.new);
+
 class AutostartNotifier extends AsyncNotifier<bool> {
   @override
   Future<bool> build() => Autostart.isEnabled();

@@ -1,7 +1,7 @@
 name: wallpaper_core
 description: Core logic for Wallpaper Fetcher (sources, library, wallpaper setters). Plain Dart, no Flutter.
 publish_to: none
-version: 0.6.0
+version: 0.6.1
 
 environment:
   sdk: ^3.14.0

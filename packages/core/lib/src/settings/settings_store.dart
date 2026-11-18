@@ -28,6 +28,10 @@ abstract final class SettingsKeys {
 
   /// `false` to quit instead of hiding to the tray when the window closes.
   static const keepInTray = 'desktop.keepInTray';
+
+  /// `true` to put wallpapers on KDE through the Blurred Wallpaper plugin
+  /// (blurs while a window is active), when it's installed.
+  static const kdeBlurredWallpaper = 'kde.blurredWallpaper';
 }
 
 /// String key/value settings stored in the library database.

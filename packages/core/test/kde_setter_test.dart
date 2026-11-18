@@ -118,6 +118,48 @@ void main() {
     expect(script, contains('["Wallpaper", plugin, "General"]'));
   });
 
+  group('blurred wallpaper setting', () {
+    String forcedPlugin(String script) =>
+        RegExp(r'var forcedPlugin = (.*);').firstMatch(script)!.group(1)!;
+
+    Future<String> applyWith({required bool prefer, required bool installed}) async {
+      final kde = KdeSetter(
+        shell: plasma,
+        runProcess: (exe, args) async =>
+            ProcessResult(0, 0, exe == 'kscreen-doctor' ? kscreenJson : '', ''),
+        preferBlur: () async => prefer,
+        blurPluginInstalled: () => installed,
+      );
+      final left = (await kde.targets()).first;
+      plasma.scripts.clear();
+      await kde.apply([Assignment(target: left, imagePath: image)]);
+      return plasma.scripts.last;
+    }
+
+    test('switches screens to the blur plugin when wanted and installed', () async {
+      expect(forcedPlugin(await applyWith(prefer: true, installed: true)), '"a2n.blur"');
+    });
+
+    test('leaves the plugin alone when not wanted, or not installed', () async {
+      expect(forcedPlugin(await applyWith(prefer: false, installed: true)), 'null');
+      expect(forcedPlugin(await applyWith(prefer: true, installed: false)), 'null');
+    });
+
+    test('finds the plugin in the user or system data directories', () async {
+      final user = p.join(temp.path, 'user');
+      final system = p.join(temp.path, 'system');
+      bool installed() => KdeSetter.isBlurPluginInstalled(
+        environment: {'HOME': temp.path, 'XDG_DATA_HOME': user, 'XDG_DATA_DIRS': system},
+      );
+      expect(installed(), isFalse);
+
+      final package = Directory(p.join(system, 'plasma', 'wallpapers', 'a2n.blur'));
+      await package.create(recursive: true);
+      await File(p.join(package.path, 'metadata.json')).writeAsString('{}');
+      expect(installed(), isTrue);
+    });
+  });
+
   test('different images on both monitors go in one script', () async {
     final second = p.join(temp.path, 'b.png');
     await File(second).writeAsString('y');

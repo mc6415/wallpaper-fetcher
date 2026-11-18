@@ -127,7 +127,7 @@ Future<CommandHandler> openDirect({bool verbose = false}) async {
   final history = WallpaperHistory(db, settings);
   final WallpaperSetter setter;
   if (Platform.isLinux) {
-    setter = createLinuxSetter();
+    setter = createLinuxSetter(settings: settings);
   } else if (Platform.isWindows) {
     setter = WindowsSetter(const Win32Desktop());
   } else {

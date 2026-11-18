@@ -329,11 +329,24 @@ class SettingsScreen extends ConsumerWidget {
                       ].join(', ').replaceFirstMapped(RegExp('^.'), (m) => m[0]!.toUpperCase()),
                 ),
               ),
+              if (services.setter case final KdeSetter kde)
+                SwitchListTile(
+                  secondary: const Icon(Icons.blur_on),
+                  title: const Text('Blur the wallpaper behind windows'),
+                  subtitle: Text(
+                    kde.blurAvailable
+                        ? 'Uses the Blurred Wallpaper plugin, which blurs the desktop while a window is '
+                              'active. Starts with the next wallpaper change.'
+                        : "Needs the Blurred Wallpaper plugin (a2n.blur), which isn't installed.",
+                  ),
+                  value: kde.blurAvailable && ref.watch(kdeBlurProvider),
+                  onChanged: kde.blurAvailable ? (on) => ref.read(kdeBlurProvider.notifier).set(on) : null,
+                ),
               header('About'),
               const ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('Wallpaper Fetcher'),
-                subtitle: Text('Version 0.6.0'),
+                subtitle: Text('Version 0.6.1'),
               ),
               ListTile(
                 leading: const Icon(Icons.description_outlined),

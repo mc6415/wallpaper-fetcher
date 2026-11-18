@@ -89,7 +89,7 @@ or in the Start menu); screen ids there are `DISPLAY1`, `DISPLAY2`…
 Where the command comes from:
 
 - **AppImage**: the AppImage itself takes the commands
-  (`~/Apps/Wallpaper_Fetcher-0.6.0-x86_64.AppImage next`). For the short name, the
+  (`~/Apps/Wallpaper_Fetcher-0.6.1-x86_64.AppImage next`). For the short name, the
   Rotation tab's **Add wallpaper-fetcher to ~/.local/bin** button links it there.
 - **Windows installer**: `wallpaper-fetcher` on PATH if you ticked that box; keyboard
   shortcuts should use the full path the Rotation tab shows
@@ -167,7 +167,10 @@ Not included: **Pexels** (its API guidelines forbid wallpaper apps) and **NASA A
 - **KDE Plasma 6**: wallpapers are set per monitor through Plasma's scripting API over
   D-Bus; the lock screen through `kscreenlockerrc` (`kwriteconfig6`). Monitor names and
   real resolutions come from `kscreen-doctor`. If a monitor is set to a plain colour,
-  setting an image switches it to an image wallpaper.
+  setting an image switches it to an image wallpaper. Monitors using the
+  [Blurred Wallpaper](https://github.com/bouteillerAlan/blurredwallpaper) plugin (`a2n.blur`)
+  keep it, and Settings → Setting wallpapers can switch every monitor to it when it's
+  installed, so the desktop blurs while a window is active.
 - **GNOME, Cinnamon, MATE**: `gsettings`; one wallpaper across all monitors (GNOME also
   sets the lock screen). The tray needs GNOME's AppIndicator extension.
 - **Xfce**: `xfconf-query`, per monitor, every workspace.

@@ -122,7 +122,7 @@ class AppServices {
     final dio = createHttpClient();
     final WallpaperSetter setter;
     if (Platform.isLinux) {
-      setter = createLinuxSetter();
+      setter = createLinuxSetter(settings: settings);
     } else if (Platform.isAndroid) {
       setter = await AndroidSetter.create();
     } else if (Platform.isWindows) {
