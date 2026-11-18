@@ -9,7 +9,7 @@ plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how it's put togethe
 
 ## Status
 
-**Phase 5 — done.** (Phases 1–4 before it.)
+**Phase 6 — done:** all six phases of the plan, with packaged releases for every platform.
 
 | | KDE Plasma | Other Linux desktops | Android | Windows 10/11 |
 |---|---|---|---|---|
@@ -28,8 +28,17 @@ the Windows 11 24H2 base — with one virtual monitor): the real wallpaper, lock
 registry calls, plus starting the app and driving it from the command line. Not yet tried
 by hand on a multi-monitor PC.
 
-Android has been tested on a Galaxy Fold (SM-F976B, Android 17). Coming next (Phase 6):
-packaging and CI releases.
+Android has been tested on a Galaxy Fold (SM-F976B, Android 17).
+
+## Installing
+
+Download from the repository's **Releases** page:
+
+| | File | |
+|---|---|---|
+| Linux | `Wallpaper_Fetcher-<version>-x86_64.AppImage` | `chmod +x` it and run it. It's also the command line (below). Built on Ubuntu 22.04, so it runs on that and anything newer; needs GTK 3 and, for API keys, libsecret, which desktops have. |
+| Windows 10 (1803+) / 11 | `Wallpaper_Fetcher-<version>-Setup.exe` | Installs for you only (no administrator) into `%LOCALAPPDATA%\Programs`, with a Start menu entry and, if you tick it, the `wallpaper-fetcher` command on PATH. Not code-signed, so SmartScreen asks first ("More info" → "Run anyway"). Uninstalls from Settings → Apps; your library and settings stay. |
+| Android 8+ | `Wallpaper_Fetcher-<version>.apk` | Allow installing apps from your browser or file manager when asked. Release builds are signed with the project's release key, so a debug build (from `flutter run`) has to be uninstalled first, which deletes a library kept in the app's own storage. |
 
 ## Using it
 
@@ -77,9 +86,16 @@ Script. On Windows: right-click the desktop → New → Shortcut, enter the comm
 a **Shortcut key** in its Properties (Windows only honours keys on shortcuts on the desktop
 or in the Start menu); screen ids there are `DISPLAY1`, `DISPLAY2`…
 
-Build it with `dart build cli -t bin/wallpaper_fetcher.dart -o ../../build/cli` in
-`packages/cli`; the executable is `build/cli/bundle/bin/wallpaper_fetcher` (packaged as
-`wallpaper-fetcher` in Phase 6).
+Where the command comes from:
+
+- **AppImage**: the AppImage itself takes the commands
+  (`~/Apps/Wallpaper_Fetcher-0.6.0-x86_64.AppImage next`). For the short name, the
+  Rotation tab's **Add wallpaper-fetcher to ~/.local/bin** button links it there.
+- **Windows installer**: `wallpaper-fetcher` on PATH if you ticked that box; keyboard
+  shortcuts should use the full path the Rotation tab shows
+  (`…\Programs\Wallpaper Fetcher\cli\bin\wallpaper_fetcher.exe`).
+- **From source**: `dart build cli -t bin/wallpaper_fetcher.dart -o ../../build/cli` in
+  `packages/cli`; the executable is `build/cli/bundle/bin/wallpaper_fetcher`.
 
 Images you drop into the library folder yourself are picked up on the next start or with
 **Rescan**.
@@ -172,8 +188,8 @@ Not included: **Pexels** (its API guidelines forbid wallpaper apps) and **NASA A
 - **Lock screen** uses Windows' `LockScreen` API, called through Windows PowerShell (so a
   PowerShell window may flash briefly). Organisation policy can block it, and it replaces
   Windows Spotlight on the lock screen.
-- **No notifications yet**: Windows only shows notifications from installed apps; that
-  comes with the installer in Phase 6. Problems from tray actions are in the log.
+- **Notifications** need the installer: Windows only shows them for an app with a Start
+  menu entry. Run from a plain build, problems from tray actions go to the log only.
 - The command line needs Windows 10 version 1803 or later (Unix sockets).
 
 ### Android notes
@@ -191,21 +207,45 @@ Not included: **Pexels** (its API guidelines forbid wallpaper apps) and **NASA A
 
 ## Development
 
-Requirements: Flutter 3.50+ (Dart 3.14), and on Linux `clang cmake ninja pkgconf gtk3`.
+Requirements: Flutter 3.50+ (Dart 3.14), and on Linux `clang cmake ninja pkgconf gtk3`
+(plus `libsecret`).
 For Android: the Android SDK (platform 36+) and a JDK 17+, set with `flutter config
 --android-sdk` and `--jdk-dir`.
 
 Windows builds need a Windows machine (Visual Studio with "Desktop development with C++"):
-`flutter run -d windows` / `flutter build windows` in `packages/app`. Every push to `main`
-or a `phase-*` branch also builds and tests on Windows in GitHub Actions
-(`.github/workflows/windows.yml`), runs `packages/core/tool/windows_smoke.dart` against the
-real Windows calls, and keeps the built app and command line as a downloadable artifact
-for a week.
+`flutter run -d windows` / `flutter build windows` in `packages/app`.
+
+### CI and releases
+
+`.github/workflows/build.yml` runs on every push to `main` or a `phase-*` branch:
+
+- **linux** (Ubuntu 22.04): all tests, the release build, the AppImage
+  (`packaging/linux/build-appimage.sh`), then starts the AppImage headless and drives it
+  with its own command line.
+- **android**: the release APK, signed with the release key from the repository secrets.
+- **windows**: all tests, `packages/core/tool/windows_smoke.dart` against the real Windows
+  calls, the installer (`packaging/windows/wallpaper-fetcher.iss`, Inno Setup), then
+  installs it silently, starts the app, drives it from the command line, sends a toast, and
+  uninstalls, checking everything is cleaned up.
+
+The files are kept as workflow artifacts for two weeks. To publish a release, bump
+`version:` in `packages/app/pubspec.yaml` (and `packages/core`, `packages/cli`), push to
+`main`, then tag it: `git tag v0.7.0 && git push origin v0.7.0`. The workflow checks the tag
+matches the version and creates the GitHub release with all three files.
+
+**Android release key**: `~/Android/wallpaper-fetcher-release.jks`, with its passwords in
+`~/Android/wallpaper-fetcher-release.properties` (`packages/app/android/key.properties`
+links to it for local release builds; git ignores it). CI gets the same key from the
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
+`ANDROID_KEY_PASSWORD` secrets. **Keep a backup of both files**: without the key, new
+versions can't be installed over old ones. Without a key (e.g. a fresh clone), release
+builds fall back to the debug key, except in CI, where that's an error.
 
 ```sh
 cd packages/app
 flutter run -d linux          # run the app
-flutter run -d <phone>        # on Android (see `flutter devices`); `flutter build apk` for an APK
+flutter run -d <phone>        # on Android (see `flutter devices`)
+flutter build apk --release   # signed with the release key if key.properties is there
 flutter test                  # widget tests
 
 cd ../core

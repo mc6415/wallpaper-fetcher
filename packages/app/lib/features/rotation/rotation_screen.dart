@@ -301,21 +301,53 @@ String shortcutCommand([Map<String, String>? environment, bool? windows]) {
       ? (env['PATH'] ?? '').split(';')
       : [...(env['PATH'] ?? '').split(':'), p.join(env['HOME'] ?? '', '.local', 'bin')];
   final names = onWindows ? const ['wallpaper-fetcher.exe', 'wallpaper_fetcher.exe'] : const ['wallpaper-fetcher'];
+  String quoted(String path) => path.contains(' ') ? '"$path"' : path;
   for (final dir in dirs.where((d) => d.isNotEmpty)) {
     for (final name in names) {
       final launcher = File(p.join(dir, name));
-      if (launcher.existsSync()) return onWindows && launcher.path.contains(' ') ? '"${launcher.path}"' : launcher.path;
+      if (launcher.existsSync()) return onWindows ? quoted(launcher.path) : launcher.path;
     }
   }
+  // Run from an AppImage, the AppImage itself takes the commands.
+  if (!onWindows && (env['APPIMAGE'] ?? '').isNotEmpty) return quoted(env['APPIMAGE']!);
   return onWindows ? 'wallpaper-fetcher.exe' : 'wallpaper-fetcher';
 }
 
-class _ShortcutsCard extends StatelessWidget {
+/// Makes `~/.local/bin/wallpaper-fetcher` a link to the running AppImage,
+/// which starts the command line when called by that name.
+Future<String> installAppImageCommand([Map<String, String>? environment]) async {
+  final env = environment ?? Platform.environment;
+  final appImage = env['APPIMAGE'];
+  if (appImage == null || appImage.isEmpty) throw StateError('Not running from an AppImage.');
+  final link = Link(p.join(env['HOME'] ?? '.', '.local', 'bin', 'wallpaper-fetcher'));
+  await link.parent.create(recursive: true);
+  if (await link.exists()) await link.delete();
+  await link.create(appImage);
+  return link.path;
+}
+
+class _ShortcutsCard extends StatefulWidget {
   const _ShortcutsCard();
+
+  @override
+  State<_ShortcutsCard> createState() => _ShortcutsCardState();
+}
+
+class _ShortcutsCardState extends State<_ShortcutsCard> {
+  Future<void> _install() async {
+    try {
+      final path = await installAppImageCommand();
+      if (mounted) showSnack(context, 'Added $path.');
+      setState(() {});
+    } on Object catch (e) {
+      if (mounted) showSnack(context, "Couldn't add the command: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final fromAppImage = !Platform.isWindows && (Platform.environment['APPIMAGE'] ?? '').isNotEmpty;
     final windows = Platform.isWindows;
     final cli = shortcutCommand();
     final commands = [
@@ -356,6 +388,22 @@ class _ShortcutsCard extends StatelessWidget {
                 child: Text(
                   "The wallpaper-fetcher command isn't installed yet; see the README.",
                   style: TextStyle(color: theme.colorScheme.error),
+                ),
+              ),
+            if (fromAppImage && !File(p.join(Platform.environment['HOME'] ?? '', '.local', 'bin', 'wallpaper-fetcher')).existsSync())
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    const Text('The AppImage takes these commands itself. For a shorter name:'),
+                    OutlinedButton.icon(
+                      onPressed: _install,
+                      icon: const Icon(Icons.terminal, size: 18),
+                      label: const Text('Add wallpaper-fetcher to ~/.local/bin'),
+                    ),
+                  ],
                 ),
               ),
             for (final (command, what) in commands)

@@ -1,5 +1,6 @@
 // Exercises the real Windows calls on a Windows machine (run in CI):
 //   dart run tool/windows_smoke.dart
+//   dart run tool/windows_smoke.dart --toast   (after installing: a notification)
 // Prints what happens at each step. Exits non-zero if a step throws
 // something other than an expected "not available here".
 import 'dart:io';
@@ -49,10 +50,16 @@ Uint8List bmp(int width, int height, int r, int g, int b) {
   return data.buffer.asUint8List();
 }
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   if (!Platform.isWindows) {
     stderr.writeln('Run this on Windows.');
     exit(2);
+  }
+  if (args.contains('--toast')) {
+    // Only works once the installer has registered the app id.
+    final shown = await DesktopNotifier().notify('Wallpaper Fetcher', 'Notifications work (smoke test).');
+    stdout.writeln(shown ? 'Toast shown.' : 'Toast NOT shown (see the log line above).');
+    exit(shown ? 0 : 1);
   }
   stdout.writeln('Windows ${Platform.operatingSystemVersion}');
   final temp = await Directory.systemTemp.createTemp('wf_smoke_');

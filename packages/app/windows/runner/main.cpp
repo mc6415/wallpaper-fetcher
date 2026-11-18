@@ -1,11 +1,14 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
+#include <shobjidl.h>
 
 #include <algorithm>
 
 #include "flutter_window.h"
 #include "utils.h"
+
+#pragma comment(lib, "shell32.lib")
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
@@ -18,6 +21,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+  // The same id as the installer's Start menu shortcut, so the taskbar and
+  // notifications treat the window and the shortcut as one app.
+  ::SetCurrentProcessExplicitAppUserModelID(L"dev.mcoombes.wallpaperfetcher");
 
   flutter::DartProject project(L"data");
 

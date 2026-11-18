@@ -37,7 +37,9 @@ wallpaper-fetcher/
 │       ├── lib/features/         # browse/ library/ detail/ rotation/ settings/
 │       ├── lib/platform/         # tray, accent colour; android/ (setter, picked folders, rotation job)
 │       └── android/.../wallpaperfetcher/  # WallpaperChannel, StorageChannel + SafTree, RotationWorker
-└── .github/workflows/windows.yml  # Windows build + tests + smoke test (Phase 5)
+├── packaging/linux/              # AppRun, desktop entry, build-appimage.sh
+├── packaging/windows/            # Inno Setup script, wallpaper-fetcher.cmd
+└── .github/workflows/build.yml   # tests + AppImage + APK + installer; releases on v* tags
 ```
 
 - The CLI forwards commands to the tray app when it is running; otherwise it does the work
@@ -88,6 +90,33 @@ desktop monitors and the Fold's screens use the same model.
   history before picking anew. The CLI talks to the running app over a Unix socket and
   falls back to opening the library itself; the same `CommandHandler` serves both.
 - Phase order: Android is Phase 4 and Windows Phase 5 (swapped 2026-11-17).
+- Phase 6 (2026-11-18), packaging:
+  - **AppImage, not Flatpak**: the app drives desktop tools (Plasma over D-Bus,
+    kwriteconfig6, gsettings, swaymsg, xfconf-query, feh) and shares a socket with the CLI;
+    a Flatpak sandbox would need host access that defeats it. Built on Ubuntu 22.04 for an
+    older glibc with appimagetool 1.9.1 (checksum pinned). One AppImage holds app and CLI:
+    `AppRun` runs the CLI for any argument other than `--hidden`, or when started through a
+    link named `wallpaper-fetcher`. Start on login and the shortcut commands use `$APPIMAGE`
+    (the executable inside lives in a mount that changes every run).
+  - **Inno Setup, not MSIX**: MSIX redirects a packaged app's AppData and HKCU writes into a
+    private store, which the CLI (outside the package) couldn't see and which breaks the
+    `Run` key; it also needs a trusted signing certificate. The installer is per user (no
+    admin), puts the CLI in `cli\bin` (optionally on PATH, with a `wallpaper-fetcher.cmd`
+    shim), quits a running copy before upgrading or uninstalling, and removes the PATH entry
+    and `Run` value on uninstall. Not code-signed (SmartScreen warns).
+  - Windows notifications: the Start menu shortcut carries the AppUserModelID
+    `dev.mcoombes.wallpaperfetcher` (the runner sets the same id on the process), and toasts
+    are sent through Windows PowerShell with `ToastNotificationManager`. nativeapi's own
+    notifications need its WinUI 3 build and the Windows App SDK runtime.
+  - Android: a release key made for this app (`~/Android/wallpaper-fetcher-release.jks`),
+    given to CI as encrypted secrets; CI fails rather than fall back to the debug key.
+    Release builds skip AGP's "lint vital" pass, which crashes in AGP 9.3 on
+    file_selector_android's sources (a lint bug). The release APK (R8, AOT) was checked on
+    the Pixel emulator, including the background rotation job.
+  - App icon from `assets/app_icon.png`: an adaptive Android icon (picture tile on
+    `#6750A4`), a multi-size Windows `.ico`, and the AppImage icon.
+  - Releases: a `v*` tag matching the pubspec version publishes a GitHub release with the
+    AppImage, the installer and the APK.
 - Phase 5 (2026-11-18), Windows:
   - Built and tested in GitHub Actions on Windows (private repo `mc6415/wallpaper-fetcher`),
     since Windows can't be built from Linux. `tool/windows_smoke.dart` drives the real calls

@@ -1,0 +1,276 @@
+name: Build
+
+# Tests and packages every platform: an AppImage on Linux, a signed APK for
+# Android and an installer for Windows. A v* tag also publishes them as a
+# GitHub release. (Windows can't be built from Linux, so this is where the
+# Windows build is made and checked.)
+on:
+  push:
+    branches: [main, 'phase-*']
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.50.0
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: read
+        name: Read the version from pubspec.yaml
+        run: |
+          version=$(sed -n 's/^version: \([0-9.]*\).*/\1/p' packages/app/pubspec.yaml)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/v* && "${GITHUB_REF#refs/tags/v}" != "$version" ]]; then
+            echo "::error::Tag ${GITHUB_REF#refs/tags/} doesn't match pubspec version $version"
+            exit 1
+          fi
+
+  linux:
+    needs: version
+    # The oldest supported Ubuntu, so the AppImage runs on older distros too.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+            libstdc++-12-dev libsecret-1-dev libjsoncpp-dev libx11-dev libxi-dev xvfb dbus-x11 file
+
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Core tests
+        working-directory: packages/core
+        run: dart test
+
+      - name: Command-line tests
+        working-directory: packages/cli
+        run: dart test
+
+      - name: App tests
+        working-directory: packages/app
+        run: flutter test
+
+      - name: Build the app
+        working-directory: packages/app
+        run: flutter build linux --release
+
+      - name: Build the command line
+        working-directory: packages/cli
+        run: dart build cli -t bin/wallpaper_fetcher.dart -o ../../build/cli
+
+      - name: Make the AppImage
+        run: |
+          curl -sSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  appimagetool" | sha256sum -c -
+          chmod +x appimagetool
+          packaging/linux/build-appimage.sh "$VERSION" ./appimagetool
+
+      - name: Start the AppImage and drive it with its own command line
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          APP: build/dist/Wallpaper_Fetcher-${{ needs.version.outputs.version }}-x86_64.AppImage
+        run: |
+          cat > drive.sh <<'SCRIPT'
+          set -u
+          "$APP" --hidden & pid=$!
+          sleep 20
+          kill -0 "$pid" || { echo 'The app exited early'; exit 1; }
+          cat ~/.local/share/dev.mcoombes.wallpaperfetcher/logs/wallpaper_fetcher.log || true
+          "$APP" --help | head -3
+          "$APP" status || exit 1
+          "$APP" quit
+          sleep 5
+          if kill -0 "$pid" 2>/dev/null; then kill "$pid"; echo "'quit' didn't stop the app"; exit 1; fi
+          echo 'The AppImage started hidden, answered its command line and quit.'
+          SCRIPT
+          xvfb-run -a dbus-run-session -- bash drive.sh
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: linux-appimage
+          path: build/dist/*.AppImage
+          retention-days: 14
+
+  android:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6.3.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Build the release APK, signed with the release key
+        working-directory: packages/app
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          REQUIRE_RELEASE_SIGNING: 'true'
+        run: |
+          keystore="$RUNNER_TEMP/release.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+          export ANDROID_KEYSTORE_FILE="$keystore"
+          flutter build apk --release
+          rm -f "$keystore"
+          mkdir -p ../../build/dist
+          cp build/app/outputs/flutter-apk/app-release.apk "../../build/dist/Wallpaper_Fetcher-$VERSION.apk"
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: android-apk
+          path: build/dist/*.apk
+          retention-days: 14
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 50
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Core tests
+        working-directory: packages/core
+        run: dart test
+
+      - name: Smoke test of the real Windows calls
+        working-directory: packages/core
+        run: dart run tool/windows_smoke.dart
+
+      - name: Command-line tests
+        working-directory: packages/cli
+        run: dart test
+
+      - name: App tests
+        working-directory: packages/app
+        run: flutter test
+
+      - name: Build the app
+        working-directory: packages/app
+        run: flutter build windows --release
+
+      - name: Build the command line
+        working-directory: packages/cli
+        run: dart build cli -t bin/wallpaper_fetcher.dart -o ../../build/cli
+
+      - name: Make the installer
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DAppVersion=$env:VERSION" packaging\windows\wallpaper-fetcher.iss'
+
+      - name: Install, start, drive from the command line, notify, uninstall
+        run: |
+          $setup = "build\dist\Wallpaper_Fetcher-$env:VERSION-Setup.exe"
+          Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/TASKS=addtopath' -Wait
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Wallpaper Fetcher'
+          $cli = Join-Path $dir 'cli\bin\wallpaper_fetcher.exe'
+          foreach ($f in @("$dir\wallpaper_fetcher.exe", $cli, "$dir\cli\bin\wallpaper-fetcher.cmd", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Wallpaper Fetcher.lnk")) {
+            if (-not (Test-Path $f)) { throw "Missing after install: $f" }
+          }
+          $path = (Get-ItemProperty 'HKCU:\Environment').Path
+          if ($path -notlike "*$dir\cli\bin*") { throw "The command isn't on PATH: $path" }
+
+          $app = Start-Process "$dir\wallpaper_fetcher.exe" -ArgumentList '--hidden' -PassThru
+          Start-Sleep -Seconds 20
+          if ($app.HasExited) { throw "The installed app exited early (code $($app.ExitCode))" }
+          & $cli screens
+          if ($LASTEXITCODE -ne 0) { throw "'screens' failed" }
+          & $cli status
+          Push-Location packages/core
+          dart run tool/windows_smoke.dart --toast
+          $toast = $LASTEXITCODE
+          Pop-Location
+          if ($toast -ne 0) { throw 'No toast with the installed app id' }
+          & $cli quit
+          Start-Sleep -Seconds 5
+          if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force; throw "'quit' didn't stop the app" }
+
+          Start-Process "$dir\unins000.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          Start-Sleep -Seconds 5
+          if (Test-Path "$dir\wallpaper_fetcher.exe") { throw 'Uninstall left the app behind' }
+          $path = (Get-ItemProperty 'HKCU:\Environment').Path
+          if ($path -like "*$dir\cli\bin*") { throw "Uninstall left the PATH entry: $path" }
+          Write-Host 'Installed, ran, notified and uninstalled cleanly.'
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: windows-installer
+          path: build/dist/*-Setup.exe
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, linux, android, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the release
+        run: |
+          {
+            echo "Wallpaper Fetcher $VERSION."
+            echo
+            echo '| File | For |'
+            echo '|---|---|'
+            echo "| \`Wallpaper_Fetcher-$VERSION-x86_64.AppImage\` | Linux (x86-64): make it executable and run it. It's also the command line: \`./Wallpaper_Fetcher-$VERSION-x86_64.AppImage next\`. |"
+            echo "| \`Wallpaper_Fetcher-$VERSION-Setup.exe\` | Windows 10 (1803+) and 11: installs for you only, no administrator needed. Not code-signed, so SmartScreen asks first. |"
+            echo "| \`Wallpaper_Fetcher-$VERSION.apk\` | Android 8+: allow installing from your browser or file manager when asked. |"
+            echo
+            echo 'See the README for setup, API keys and what works on each desktop.'
+          } > notes.md
+          gh release create "v$VERSION" dist/* --title "Wallpaper Fetcher $VERSION" --notes-file notes.md --verify-tag

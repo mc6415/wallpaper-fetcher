@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Wallpaper Fetcher
+GenericName=Wallpaper manager
+Comment=Fetch wallpapers, keep a library, and change your wallpaper in a click or two
+Exec=wallpaper_fetcher
+Icon=dev.mcoombes.wallpaperfetcher
+Terminal=false
+Categories=Utility;Graphics;
+Keywords=wallpaper;background;desktop;rotation;
+StartupWMClass=dev.mcoombes.wallpaperfetcher

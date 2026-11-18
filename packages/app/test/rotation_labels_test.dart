@@ -28,4 +28,17 @@ void main() {
     final exe = File(p.join(dir.path, 'wallpaper_fetcher.exe'))..createSync();
     expect(shortcutCommand({'PATH': '/nonexistent;${dir.path}'}, true), '"${exe.path}"');
   });
+
+  test('from an AppImage, the AppImage takes the commands, and can add a wallpaper-fetcher link', () async {
+    final home = Directory.systemTemp.createTempSync('wf_appimage_');
+    addTearDown(() => home.deleteSync(recursive: true));
+    final appImage = File(p.join(home.path, 'Apps', 'Wallpaper Fetcher.AppImage'))..createSync(recursive: true);
+    final env = {'HOME': home.path, 'PATH': '/nonexistent', 'APPIMAGE': appImage.path};
+
+    expect(shortcutCommand(env, false), '"${appImage.path}"');
+
+    final link = await installAppImageCommand(env);
+    expect(Link(link).targetSync(), appImage.path);
+    expect(shortcutCommand(env, false), link, reason: 'the short name wins once it exists');
+  }, skip: Platform.isWindows ? 'AppImages are Linux only' : null);
 }

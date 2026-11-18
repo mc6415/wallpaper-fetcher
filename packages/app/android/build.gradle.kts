@@ -22,3 +22,10 @@ subprojects {
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
+
+// AGP 9.3's lint crashes analysing file_selector_android's sources
+// (CommentDetector, "a bug in lint"), and release builds run lint's "vital"
+// pass on every module. Skip that pass; `./gradlew lint` still works.
+subprojects {
+    tasks.matching { it.name.startsWith("lintVital") }.configureEach { enabled = false }
+}

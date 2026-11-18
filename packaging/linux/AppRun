@@ -1,0 +1,17 @@
+#!/bin/sh
+# Starts Wallpaper Fetcher from the AppImage, or its command line:
+#   Wallpaper_Fetcher.AppImage            the app (--hidden: straight to the tray)
+#   Wallpaper_Fetcher.AppImage next ...   any other arguments: the command line
+#   wallpaper-fetcher next ...            a symlink of that name: the command line
+HERE="$(dirname "$(readlink -f "$0")")"
+APP="$HERE/usr/lib/wallpaper-fetcher/wallpaper_fetcher"
+CLI="$HERE/usr/lib/wallpaper-fetcher-cli/bin/wallpaper_fetcher"
+
+# The AppImage runtime puts the name it was started by in $ARGV0.
+if [ "$(basename "${ARGV0:-$0}")" = "wallpaper-fetcher" ]; then
+  exec "$CLI" "$@"
+fi
+if [ "$#" -gt 0 ] && [ "$1" != "--hidden" ]; then
+  exec "$CLI" "$@"
+fi
+exec "$APP" "$@"

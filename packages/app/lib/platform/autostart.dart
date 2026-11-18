@@ -26,7 +26,10 @@ abstract final class Autostart {
   }
 
   static Future<void> setEnabled(bool enabled, {String? executable}) async {
-    final exe = executable ?? Platform.resolvedExecutable;
+    // From an AppImage, the AppImage file: the executable inside it lives in
+    // a mount that changes every run.
+    final appImage = Platform.environment['APPIMAGE'];
+    final exe = executable ?? (appImage != null && appImage.isNotEmpty ? appImage : Platform.resolvedExecutable);
     if (Platform.isWindows) {
       enabled
           ? UserRegistry.writeString(windowsRunKey, windowsValueName, windowsCommand(exe))

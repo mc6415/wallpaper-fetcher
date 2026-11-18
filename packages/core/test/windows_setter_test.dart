@@ -158,4 +158,24 @@ void main() {
       );
     });
   });
+
+  test('Windows toasts go through PowerShell with the text and app id in environment variables', () async {
+    Map<String, String>? env;
+    late String script;
+    final notifier = DesktopNotifier(
+      run: (exe, arguments, {environment}) async {
+        env = environment;
+        script = arguments.last;
+        return ProcessResult(1, 0, '', '');
+      },
+    );
+    // notify() only takes the Windows path on Windows; drive the runner the same way.
+    if (!Platform.isWindows) {
+      expect(DesktopNotifier.windowsScript, contains('CreateToastNotifier'));
+      return;
+    }
+    expect(await notifier.notify('Title <&>', 'Body'), isTrue);
+    expect(env, {'WALLPAPER_FETCHER_TITLE': 'Title <&>', 'WALLPAPER_FETCHER_BODY': 'Body', 'WALLPAPER_FETCHER_APP_ID': AppPaths.appId});
+    expect(script, isNot(contains('Title')));
+  });
 }
