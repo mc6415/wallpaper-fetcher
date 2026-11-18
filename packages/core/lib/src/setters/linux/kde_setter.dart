@@ -82,7 +82,9 @@ class KdeSetter implements WallpaperSetter {
     final env = environment ?? Platform.environment;
     final home = env['HOME'] ?? '';
     final dataHome = env['XDG_DATA_HOME'] ?? '$home/.local/share';
-    final dataDirs = (env['XDG_DATA_DIRS'] ?? '').split(':').where((d) => d.isNotEmpty);
+    // ';' on Windows, where paths contain ':' (only the tests run this there).
+    final separator = Platform.isWindows ? ';' : ':';
+    final dataDirs = (env['XDG_DATA_DIRS'] ?? '').split(separator).where((d) => d.isNotEmpty);
     final dirs = [dataHome, ...(dataDirs.isEmpty ? ['/usr/local/share', '/usr/share'] : dataDirs)];
     return dirs.any((d) => File('$d/plasma/wallpapers/$blurPlugin/metadata.json').existsSync());
   }
