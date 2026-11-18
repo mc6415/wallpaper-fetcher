@@ -104,6 +104,20 @@ void main() {
     expect(commands.where((c) => c.first == 'kwriteconfig6'), isEmpty);
   });
 
+  test('apply keeps a compatible wallpaper plugin such as Blurred Wallpaper', () async {
+    final left = (await setter.targets()).first;
+    plasma.scripts.clear();
+
+    await setter.apply([Assignment(target: left, imagePath: image)]);
+
+    final script = plasma.scripts.last;
+    final plugins = jsonDecode(RegExp(r'var imagePlugins = (.*);').firstMatch(script)!.group(1)!) as List;
+    expect(plugins, containsAll(['org.kde.image', 'a2n.blur']));
+    expect(script, isNot(contains('d.wallpaperPlugin = "org.kde.image"')),
+        reason: 'the plugin must not be forced back to the plain image one');
+    expect(script, contains('["Wallpaper", plugin, "General"]'));
+  });
+
   test('different images on both monitors go in one script', () async {
     final second = p.join(temp.path, 'b.png');
     await File(second).writeAsString('y');

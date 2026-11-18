@@ -129,6 +129,12 @@ class KdeSetter implements WallpaperSetter {
     FitMode.span => 2,
   };
 
+  /// Wallpaper plugins that store the picture under the same `Image` and
+  /// `FillMode` keys as Plasma's own image plugin, so a screen already using
+  /// one keeps it. `a2n.blur` is "Blurred Wallpaper" (blurs when a window is
+  /// active). Any other plugin is replaced by `org.kde.image`.
+  static const imagePlugins = ['org.kde.image', 'a2n.blur'];
+
   /// A Plasma script that sets each listed screen's wallpaper. Every desktop
   /// on that screen is updated (one per activity). Prints how many screens it
   /// updated.
@@ -142,14 +148,16 @@ class KdeSetter implements WallpaperSetter {
     };
     return '''
 var assignments = ${jsonEncode(config)};
+var imagePlugins = ${jsonEncode(imagePlugins)};
 var desktopList = desktops();
 var updated = {};
 for (var i = 0; i < desktopList.length; i++) {
   var d = desktopList[i];
   var a = assignments[String(d.screen)];
   if (!a) continue;
-  d.wallpaperPlugin = "org.kde.image";
-  d.currentConfigGroup = ["Wallpaper", "org.kde.image", "General"];
+  var plugin = imagePlugins.indexOf(d.wallpaperPlugin) >= 0 ? d.wallpaperPlugin : "org.kde.image";
+  if (d.wallpaperPlugin != plugin) d.wallpaperPlugin = plugin;
+  d.currentConfigGroup = ["Wallpaper", plugin, "General"];
   d.writeConfig("Image", a.image);
   d.writeConfig("FillMode", a.fill);
   updated[d.screen] = true;
