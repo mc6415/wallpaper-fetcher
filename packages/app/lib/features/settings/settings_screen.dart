@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:wallpaper_core/wallpaper_core.dart';
 
+import '../../platform/android/saf_storage.dart';
 import '../../platform/files.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -26,18 +29,62 @@ class SettingsScreen extends ConsumerWidget {
     (width: 5120, height: 2880),
   ];
 
+  static const _phoneResolutions = <Resolution?>[
+    null,
+    (width: 1080, height: 1920),
+    (width: 1080, height: 2400),
+    (width: 1440, height: 2560),
+    (width: 1440, height: 3200),
+    (width: 2160, height: 3840),
+  ];
+
+  /// On a phone: a folder from the system picker, or back to app storage.
+  Future<String?> _choosePhoneFolder(BuildContext context, WidgetRef ref) async {
+    final onPicked = ref.read(libraryRootProvider)?.startsWith('content://') ?? false;
+    final where = !onPicked
+        ? 'pick'
+        : await showDialog<String>(
+            context: context,
+            builder: (context) => SimpleDialog(
+              title: const Text('Library folder'),
+              children: [
+                SimpleDialogOption(onPressed: () => Navigator.pop(context, 'pick'), child: const Text('Pick another folder…')),
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, 'app'),
+                  child: const Text("Use the app's own storage"),
+                ),
+              ],
+            ),
+          );
+    return switch (where) {
+      'pick' => PickedFolders.pick(),
+      'app' => defaultLibraryDirectory(),
+      _ => null,
+    };
+  }
+
   Future<void> _changeFolder(BuildContext context, WidgetRef ref, String current) async {
-    final picked = await getDirectoryPath(initialDirectory: current, confirmButtonText: 'Use this folder');
-    if (picked == null || !context.mounted) return;
-    final count = ref.read(libraryTotalProvider).value ?? 0;
+    final phone = ref.read(isPhoneProvider);
+    final picked = phone
+        ? await _choosePhoneFolder(context, ref)
+        : await getDirectoryPath(initialDirectory: current, confirmButtonText: 'Use this folder');
+    if (picked == null || picked == current || !context.mounted) return;
+    final name = switch (picked) {
+      final p when p.startsWith('content://') => PickedFolders.describe(p),
+      final p when phone && p.contains('/Android/data/') => "the app's own storage",
+      final p => p,
+    };
+    // Counted here: the Library's own count may not have loaded yet.
+    final count = (await ref.read(libraryProvider).items()).length;
+    if (!context.mounted) return;
     final choice = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Change library folder'),
         content: Text(
           count == 0
-              ? 'Use $picked for your library?'
-              : 'Move your $count wallpapers to $picked, or just start using that folder? '
+              ? 'Use $name for your library?'
+              : 'Move your $count wallpapers to $name, or just start using that folder? '
                     "If you don't move them, the library is rebuilt from what's in the new folder.",
         ),
         actions: [
@@ -58,6 +105,8 @@ class SettingsScreen extends ConsumerWidget {
       } else {
         await notifier.switchTo(picked);
       }
+      // Hand back access to a picked folder the library has left.
+      if (current.startsWith('content://')) await PickedFolders.release(current);
       if (context.mounted) showSnack(context, 'Library folder changed.');
     } on Object catch (e) {
       if (context.mounted) showSnack(context, '$e');
@@ -73,9 +122,11 @@ class SettingsScreen extends ConsumerWidget {
     try {
       await ref.read(apiKeysProvider.notifier).save(source.id, key);
       ref.invalidate(browseProvider(source.id));
-      if (context.mounted) showSnack(context, '${source.name} key saved to your system keyring.');
+      if (context.mounted) {
+        showSnack(context, ref.read(isPhoneProvider) ? '${source.name} key saved.' : '${source.name} key saved to your system keyring.');
+      }
     } on Object catch (e) {
-      if (context.mounted) showSnack(context, "Couldn't save the key to your system keyring: $e");
+      if (context.mounted) showSnack(context, "Couldn't save the key: $e");
     }
   }
 
@@ -101,7 +152,13 @@ class SettingsScreen extends ConsumerWidget {
     final enabled = ref.watch(enabledSourcesProvider);
     final keys = ref.watch(apiKeysProvider);
     final caps = ref.watch(setterCapabilitiesProvider).value;
-    final resolutions = {..._resolutions, minResolution}.toList();
+    final phone = ref.watch(isPhoneProvider);
+    final screens = [
+      for (final t in ref.watch(targetsProvider).value ?? const <DisplayTarget>[])
+        if (t.surface == TargetSurface.home) (width: t.width, height: t.height),
+    ];
+    final resolutions = {...(phone ? _phoneResolutions : _resolutions), ...screens, minResolution}.toList();
+    final library = ref.watch(libraryProvider);
 
     Widget header(String text) => Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
@@ -120,11 +177,15 @@ class SettingsScreen extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.folder_outlined),
                 title: const Text('Library folder'),
-                subtitle: Text(root ?? 'Not chosen'),
+                subtitle: Text(switch (root) {
+                  null => 'Not chosen',
+                  final r when phone && r.contains('/Android/data/') => "The app's own storage",
+                  final r => library.displayName ?? r,
+                }),
                 trailing: Wrap(
                   spacing: 8,
                   children: [
-                    if (root != null)
+                    if (root != null && canOpenFolders)
                       IconButton(tooltip: 'Open', icon: const Icon(Icons.open_in_new), onPressed: () => openFolder(root)),
                     OutlinedButton(
                       onPressed: root == null ? null : () => _changeFolder(context, ref, root),
@@ -151,7 +212,9 @@ class SettingsScreen extends ConsumerWidget {
                 ListTile(
                   leading: Icon(Icons.warning_amber, color: theme.colorScheme.error),
                   title: Text(error),
-                  subtitle: const Text('Check that your keyring is unlocked, then restart the app.'),
+                  subtitle: Text(
+                    phone ? 'Add the keys again below.' : 'Check that your keyring is unlocked, then restart the app.',
+                  ),
                 ),
               for (final source in services.sources.values) ...[
                 SwitchListTile(
@@ -169,7 +232,7 @@ class SettingsScreen extends ConsumerWidget {
                       title: Text('${source.name} API key'),
                       subtitle: Text(
                         keys.contains(source.id)
-                            ? 'Saved in your system keyring'
+                            ? (phone ? 'Saved on this phone, encrypted' : 'Saved in your system keyring')
                             : 'Not set. ${source.name} stays empty until you add one.',
                       ),
                       trailing: Wrap(
@@ -222,11 +285,12 @@ class SettingsScreen extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.palette_outlined),
                 title: const Text('Accent colour'),
-                subtitle: Text(
-                  appearance.accent == null
-                      ? 'Your desktop has no accent colour set, so the default is used'
-                      : 'Follows your desktop accent colour',
-                ),
+                subtitle: Text(switch ((phone, appearance.accent)) {
+                  (true, null) => 'Material You needs Android 12 or later, so the default is used',
+                  (true, _) => "Follows your phone's Material You colours",
+                  (false, null) => 'Your desktop has no accent colour set, so the default is used',
+                  (false, _) => 'Follows your desktop accent colour',
+                }),
                 trailing: CircleAvatar(radius: 12, backgroundColor: theme.colorScheme.primary),
               ),
               if (ref.watch(desktopProvider) != null) ...[
@@ -248,13 +312,15 @@ class SettingsScreen extends ConsumerWidget {
               ],
               header('Setting wallpapers'),
               ListTile(
-                leading: const Icon(Icons.desktop_windows_outlined),
+                leading: Icon(phone ? Icons.smartphone : Icons.desktop_windows_outlined),
                 title: Text(services.setter.name),
                 subtitle: Text(
                   caps?.note ??
                       [
-                        if (caps?.perTarget ?? false) 'a different image per monitor',
+                        if ((caps?.perTarget ?? false) && screens.length > 1)
+                          phone ? 'a different image per screen' : 'a different image per monitor',
                         if (caps?.lockScreen ?? false) 'lock screen',
+                        if (caps?.cropsToFocus ?? false) 'you choose the crop',
                       ].join(', ').replaceFirstMapped(RegExp('^.'), (m) => m[0]!.toUpperCase()),
                 ),
               ),
@@ -262,13 +328,13 @@ class SettingsScreen extends ConsumerWidget {
               const ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('Wallpaper Fetcher'),
-                subtitle: Text('Version 0.3.0'),
+                subtitle: Text('Version 0.4.0'),
               ),
               ListTile(
                 leading: const Icon(Icons.description_outlined),
                 title: const Text('Log files'),
                 subtitle: Text(services.logDirectory),
-                onTap: () => openFolder(services.logDirectory),
+                onTap: canOpenFolders ? () => openFolder(services.logDirectory) : null,
               ),
               const SizedBox(height: 24),
             ],
@@ -312,8 +378,8 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
             Text(
               name == 'Unsplash'
                   ? 'Create an app at unsplash.com/oauth/applications, then paste its "Access Key" '
-                        '(not the Secret key). It is stored in your system keyring, not in a file.'
-                  : 'Paste your $name key. It is stored in your system keyring, not in a file.',
+                        '(not the Secret key). $_whereKeysGo'
+                  : 'Paste your $name key. $_whereKeysGo',
             ),
             const SizedBox(height: 16),
             TextField(
@@ -345,3 +411,7 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
     );
   }
 }
+
+String get _whereKeysGo => Platform.isAndroid
+    ? "It's stored encrypted on this phone, not in a file."
+    : 'It is stored in your system keyring, not in a file.';

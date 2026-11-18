@@ -65,7 +65,10 @@ class BrowseController extends Notifier<BrowseState> {
   BrowseState build() {
     final caps = _source.capabilities;
     final query = SearchQuery(
-      orientation: caps.supportsOrientation ? WallpaperOrientation.landscape : null,
+      // Phones default to wallpapers of their own shape.
+      orientation: caps.supportsOrientation
+          ? (ref.read(isPhoneProvider) ? WallpaperOrientation.portrait : WallpaperOrientation.landscape)
+          : null,
       minResolution: caps.supportsMinResolution ? ref.read(minResolutionProvider) : null,
       sort: caps.sortModes.firstOrNull ?? SortMode.toplist,
     );

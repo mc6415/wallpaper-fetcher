@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../platform/android/saf_storage.dart';
 import '../../platform/files.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -32,16 +33,16 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   }
 
   Future<void> _pick(String initial) async {
-    final path = await getDirectoryPath(
-      initialDirectory: initial,
-      confirmButtonText: 'Use this folder',
-    );
+    final path = ref.read(isPhoneProvider)
+        ? await PickedFolders.pick()
+        : await getDirectoryPath(initialDirectory: initial, confirmButtonText: 'Use this folder');
     if (path != null) await _use(path);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final phone = ref.watch(isPhoneProvider);
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -61,17 +62,24 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                     Text('Welcome to Wallpaper Fetcher', style: theme.textTheme.headlineSmall),
                     const SizedBox(height: 12),
                     Text(
-                      'Choose a folder for your wallpaper library. Downloads go into one '
-                      'sub-folder per source, and any images already in the folder are '
-                      'added to your library too.',
+                      phone
+                          ? 'Choose where to keep your wallpaper library. The app\'s own storage '
+                                'needs no permissions; a folder you pick (like Pictures) keeps your '
+                                'wallpapers if the app is uninstalled and shows them in other apps. '
+                                'Images already in a picked folder are added too.'
+                          : 'Choose a folder for your wallpaper library. Downloads go into one '
+                                'sub-folder per source, and any images already in the folder are '
+                                'added to your library too.',
                       style: theme.textTheme.bodyLarge,
                     ),
                     const SizedBox(height: 24),
                     Card.outlined(
                       child: ListTile(
                         leading: const Icon(Icons.folder_outlined),
-                        title: const Text('Suggested folder'),
-                        subtitle: Text(folder ?? '…'),
+                        title: Text(phone ? "The app's own storage" : 'Suggested folder'),
+                        subtitle: Text(
+                          phone && folder != null ? '$folder\nRemoved if you uninstall the app' : folder ?? '…',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -84,11 +92,11 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                           icon: _busy
                               ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
                               : const Icon(Icons.check),
-                          label: const Text('Use this folder'),
+                          label: Text(phone ? 'Use app storage' : 'Use this folder'),
                         ),
                         OutlinedButton(
                           onPressed: _busy || folder == null ? null : () => _pick(folder),
-                          child: const Text('Choose another…'),
+                          child: Text(phone ? 'Pick a folder…' : 'Choose another…'),
                         ),
                       ],
                     ),

@@ -22,7 +22,8 @@ class _LibraryThumbnailState extends ConsumerState<LibraryThumbnail> {
 
   Future<File> _load() {
     final services = ref.read(servicesProvider);
-    return services.thumbnails.forItem(widget.item, services.library.absolutePath(widget.item));
+    final item = widget.item;
+    return services.thumbnails.forItem(item, () => services.library.storage.readBytes(item.relativePath));
   }
 
   @override

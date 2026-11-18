@@ -1,11 +1,13 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' show TableUpdate;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:wallpaper_core/wallpaper_core.dart';
 
 import 'app.dart';
+import 'platform/android/background_rotation.dart';
 import 'platform/desktop.dart';
 import 'providers.dart';
 import 'services.dart';
@@ -29,8 +31,14 @@ Future<void> main(List<String> args) async {
     exit(0);
   }
 
-  // Logged because a hidden window that doesn't draw again looks like a bug.
-  AppLifecycleListener(onStateChange: (state) => Logger('Lifecycle').info(state.name));
+  if (Platform.isAndroid) AndroidRotationSchedule(services.rotation).start();
+
+  AppLifecycleListener(
+    // Logged because a hidden window that doesn't draw again looks like a bug.
+    onStateChange: (state) => Logger('Lifecycle').info(state.name),
+    // Android's background job may have changed the wallpaper meanwhile.
+    onResume: Platform.isAndroid ? () => _refreshAfterBackground(services) : null,
+  );
 
   runApp(
     ProviderScope(
@@ -44,3 +52,18 @@ Future<void> main(List<String> args) async {
     ),
   );
 }
+
+/// Picks up what the background rotation job did while the app was away.
+/// It normally shares the app's database connection, but not if the app
+/// started while it was running.
+Future<void> _refreshAfterBackground(AppServices services) async {
+  await services.rotation.load();
+  services.db.notifyUpdates({
+    TableUpdate.onTable(services.db.wallpapers),
+    TableUpdate.onTable(services.db.applyHistory),
+  });
+}
+
+/// Android's background rotation job (`RotationWorker.kt`) starts here.
+@pragma('vm:entry-point')
+Future<void> rotationWorkerMain() => runBackgroundRotation();

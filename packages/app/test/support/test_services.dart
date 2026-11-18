@@ -34,6 +34,25 @@ class FakeSetter implements WallpaperSetter {
   Future<void> apply(List<Assignment> assignments) async => applied.add(assignments);
 }
 
+/// A Galaxy Fold: main and cover screens, each with a lock screen, cropped
+/// around a focus point like the real Android setter.
+class FakeFoldSetter extends FakeSetter {
+  @override
+  String get name => 'Samsung foldable';
+
+  @override
+  Future<List<DisplayTarget>> targets() async => const [
+    DisplayTarget(id: 'main', label: 'Main screen', width: 2256, height: 2504, isPrimary: true),
+    DisplayTarget(id: 'cover', label: 'Cover screen', width: 1080, height: 2520),
+    DisplayTarget(id: 'main-lock', label: 'Main lock screen', width: 2256, height: 2504, surface: TargetSurface.lock),
+    DisplayTarget(id: 'cover-lock', label: 'Cover lock screen', width: 1080, height: 2520, surface: TargetSurface.lock),
+  ];
+
+  @override
+  Future<SetterCapabilities> capabilities() async =>
+      const SetterCapabilities(perTarget: true, lockScreen: true, fitModes: [FitMode.fill], cropsToFocus: true);
+}
+
 /// Answers every request with an empty Wallhaven page.
 class _EmptyWallhaven implements HttpClientAdapter {
   @override
@@ -74,14 +93,14 @@ class TestEnv {
   final Directory temp;
 
   /// Call inside `tester.runAsync`: it touches the real file system.
-  static Future<TestEnv> create({bool withLibrary = true}) async {
+  static Future<TestEnv> create({bool withLibrary = true, FakeSetter? setter}) async {
     final temp = await Directory.systemTemp.createTemp('wf_app_test_');
     final db = AppDatabase(NativeDatabase.memory());
     final settings = SettingsStore(db);
     final library = WallpaperLibrary(db, settings);
     if (withLibrary) await library.setRoot(p.join(temp.path, 'library'));
     final dio = Dio()..httpClientAdapter = _EmptyWallhaven();
-    final setter = FakeSetter();
+    setter ??= FakeSetter();
     final history = WallpaperHistory(db, settings);
     final apiKeys = ApiKeys();
     final keyStore = FakeKeyStore();

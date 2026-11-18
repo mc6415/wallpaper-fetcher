@@ -17,7 +17,7 @@ const _v1 = [
 ];
 
 void main() {
-  test('a Phase 1 database upgrades to version 2 and keeps its data', () async {
+  test('a Phase 1 database upgrades to the current version and keeps its data', () async {
     final temp = await Directory.systemTemp.createTemp('wf_migration_');
     addTearDown(() => temp.delete(recursive: true));
     final file = File(p.join(temp.path, 'library.sqlite'));
@@ -51,5 +51,9 @@ void main() {
       ApplyHistoryCompanion.insert(appliedAt: DateTime(2026), target: 'lock', fit: const Value(FitMode.fit)),
     );
     expect((await db.select(db.applyHistory).get()).last.fit, FitMode.fit);
+    expect((await db.select(db.wallpapers).get()).single.focusX, isNull);
+    await db.update(db.wallpapers).write(const WallpapersCompanion(focusX: Value(0.25), focusY: Value(0.75)));
+    final item = (await db.select(db.wallpapers).get()).single;
+    expect((item.focusX, item.focusY), (0.25, 0.75));
   });
 }

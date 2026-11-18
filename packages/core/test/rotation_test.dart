@@ -261,6 +261,26 @@ void main() {
       now = now.add(const Duration(minutes: 2));
       expect(await rotation.tick(), isNull);
     });
+
+    test('a background check counts a change due within the slack as due', () async {
+      await addImages(['a', 'b', 'c']);
+      await rotation.configure(const RotationConfig(enabled: true, interval: Duration(hours: 1)));
+      now = now.add(const Duration(minutes: 50));
+      expect(await rotation.tick(slack: const Duration(minutes: 5)), isNull);
+      expect((await rotation.tick(slack: const Duration(minutes: 15)))?.changed, isTrue);
+    });
+
+    test('background checks run as often as the interval, between 15 minutes and an hour', () async {
+      Future<Duration> every(RotationConfig config) async {
+        await rotation.configure(config);
+        return rotation.backgroundCheckInterval;
+      }
+
+      expect(await every(const RotationConfig(interval: Duration(minutes: 5))), const Duration(minutes: 15));
+      expect(await every(const RotationConfig(interval: Duration(minutes: 30))), const Duration(minutes: 30));
+      expect(await every(const RotationConfig(interval: Duration(days: 1))), const Duration(hours: 1));
+      expect(await every(const RotationConfig(pool: DailyPool('bing'))), const Duration(hours: 1));
+    });
   });
 
   group('daily pool', () {

@@ -4,12 +4,15 @@ import 'package:wallpaper_core/wallpaper_core.dart';
 
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import 'crop_screen.dart';
 
 /// Asks where to put [item] (each monitor, all monitors, lock screen) and
 /// applies it in one tap. Shows a snack bar with the outcome.
 Future<void> showApplySheet(BuildContext context, LibraryItem item) async {
   final message = await showModalBottomSheet<String>(
     context: context,
+    // Over the whole app, not just the current tab (covers the phone's bottom bar).
+    useRootNavigator: true,
     showDragHandle: true,
     isScrollControlled: true,
     constraints: const BoxConstraints(maxWidth: 560),
@@ -33,13 +36,28 @@ class _ApplySheetState extends ConsumerState<ApplySheet> {
   String? _error;
 
   Future<void> _apply(String label, List<DisplayTarget> targets) async {
+    var item = widget.item;
+    final library = ref.read(libraryProvider);
+    // On a phone the image is cropped to each screen: let the user say where.
+    if ((ref.read(setterCapabilitiesProvider).value?.cropsToFocus ?? false) && needsCrop(item, targets)) {
+      final focus = await showCropScreen(context, item: item, screens: targets);
+      if (focus == null || !mounted) return;
+      if (focus != item.focus) {
+        await library.setFocus(item, focus);
+        item = await library.byId(item.id) ?? item;
+      }
+    }
     setState(() {
       _busyLabel = label;
       _error = null;
     });
     try {
-      await ref.read(servicesProvider).applier.apply(widget.item, targets, fit: _fit);
-      if (mounted) Navigator.of(context).pop('Wallpaper set on ${label[0].toLowerCase()}${label.substring(1)}.');
+      await ref.read(servicesProvider).applier.apply(item, targets, fit: _fit);
+      if (mounted) {
+        Navigator.of(context).pop(
+          label == 'Everywhere' ? 'Wallpaper set everywhere.' : 'Wallpaper set on ${label[0].toLowerCase()}${label.substring(1)}.',
+        );
+      }
     } on Object catch (e) {
       if (mounted) {
         setState(() {
@@ -108,6 +126,8 @@ class _ApplySheetState extends ConsumerState<ApplySheet> {
     final lock = [for (final t in targets) if (t.surface == TargetSurface.lock) t];
     final item = widget.item;
     final itemShape = WallpaperOrientation.of(item.width, item.height);
+    final phone = ref.watch(isPhoneProvider);
+    final asks = ref.watch(setterCapabilitiesProvider).value?.cropsToFocus ?? false;
 
     Widget option(IconData icon, String label, List<DisplayTarget> to, {String? subtitle}) {
       final busy = _busyLabel == label;
@@ -125,17 +145,27 @@ class _ApplySheetState extends ConsumerState<ApplySheet> {
 
     String? fitNote(DisplayTarget t) {
       final note = <String>[formatSize(t.width, t.height)];
-      if (WallpaperOrientation.of(t.width, t.height) != itemShape) note.add('different shape, will be cropped');
+      if (asks && needsCrop(item, [t])) {
+        note.add("different shape, you'll choose the crop");
+      } else if (WallpaperOrientation.of(t.width, t.height) != itemShape) {
+        note.add('different shape, will be cropped');
+      }
       if (item.width < t.width || item.height < t.height) note.add('image is smaller than the screen');
       return note.join(' · ');
     }
 
+    final everywhere = switch ((phone, screens.length, lock.length)) {
+      (true, > 1, _) => 'Both screens and their lock screens',
+      (true, _, _) => 'Home and lock screen',
+      (false, _, > 1) => 'All monitors and lock screens',
+      _ => 'All monitors and the lock screen',
+    };
     return [
-      for (final s in screens) option(Icons.monitor, s.label, [s], subtitle: fitNote(s)),
-      if (screens.length > 1) option(Icons.desktop_windows_outlined, 'All monitors', screens),
+      for (final s in screens) option(phone ? Icons.smartphone : Icons.monitor, s.label, [s], subtitle: fitNote(s)),
+      if (screens.length > 1)
+        option(phone ? Icons.devices_fold_outlined : Icons.desktop_windows_outlined, phone ? 'Both screens' : 'All monitors', screens),
       for (final l in lock) option(Icons.lock_outline, l.label, [l]),
-      if (lock.isNotEmpty && screens.isNotEmpty)
-        option(Icons.done_all, 'Everywhere', [...screens, ...lock], subtitle: 'All monitors and the lock screen'),
+      if (lock.isNotEmpty && screens.isNotEmpty) option(Icons.done_all, 'Everywhere', [...screens, ...lock], subtitle: everywhere),
     ];
   }
 }

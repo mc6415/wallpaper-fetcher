@@ -99,9 +99,8 @@ class DownloadManager {
         wallpaper.id,
         ticket.fileExtension,
       );
-      final finalPath = _library.absoluteFor(relative);
-      await File(finalPath).parent.create(recursive: true);
-      part = File('$finalPath.part');
+      final storage = _library.storage;
+      part = File(await storage.stagingFile(relative));
 
       final token = _cancelTokens[key] = CancelToken();
       var lastFraction = -1.0;
@@ -159,11 +158,11 @@ class DownloadManager {
         throw LibraryException("The downloaded file isn't an image we can read.");
       }
       final fileSize = await part.length();
-      await part.rename(finalPath);
+      await storage.putFile(part.path, relative, move: true);
       part = null;
 
       final meta = Sidecar.fromRemote(ticket.wallpaper);
-      await meta.write(LibraryLayout.sidecarFor(finalPath));
+      await storage.writeText(LibraryLayout.sidecarFor(relative), meta.encode());
       final item = await _library.insert(
         meta,
         relativePath: relative,

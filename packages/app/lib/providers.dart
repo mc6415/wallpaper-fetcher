@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:wallpaper_core/wallpaper_core.dart';
 
+import 'platform/android/android_setter.dart';
 import 'platform/autostart.dart';
 import 'platform/desktop.dart';
 import 'platform/linux_appearance.dart';
@@ -15,6 +16,9 @@ final servicesProvider = Provider<AppServices>(
 );
 
 final libraryProvider = Provider((ref) => ref.watch(servicesProvider).library);
+
+/// Phone wording and layout (Android). Overridden in tests.
+final isPhoneProvider = Provider<bool>((ref) => Platform.isAndroid);
 final sourcesProvider = Provider((ref) => ref.watch(servicesProvider).sources);
 
 // --- Sources -----------------------------------------------------------------
@@ -272,6 +276,14 @@ final minResolutionProvider = NotifierProvider<MinResolutionNotifier, Resolution
 class AppearanceNotifier extends Notifier<Appearance> {
   @override
   Appearance build() {
+    if (Platform.isAndroid) {
+      // Material You: the accent follows the wallpaper, so look again
+      // whenever the app comes back to the front.
+      final listener = AppLifecycleListener(onResume: _readAndroidAccent);
+      ref.onDispose(listener.dispose);
+      _readAndroidAccent();
+      return const Appearance();
+    }
     if (!Platform.isLinux) return const Appearance();
     final watcher = LinuxAppearanceWatcher();
     ref.onDispose(watcher.dispose);
@@ -280,9 +292,17 @@ class AppearanceNotifier extends Notifier<Appearance> {
     });
     return const Appearance();
   }
+
+  Future<void> _readAndroidAccent() async {
+    final argb = await AndroidSetter.accentColor();
+    if (!ref.mounted) return;
+    final accent = argb == null ? null : Color(argb);
+    if (accent != state.accent) state = Appearance(accent: accent);
+  }
 }
 
 final appearanceProvider = NotifierProvider<AppearanceNotifier, Appearance>(AppearanceNotifier.new);
+
 
 // --- Rotation and desktop integration ----------------------------------------
 

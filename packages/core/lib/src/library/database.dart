@@ -58,6 +58,11 @@ class Wallpapers extends Table {
   /// Kept in the library but left out of rotation.
   BoolColumn get isHidden => boolean().withDefault(const Constant(false))();
 
+  /// Where to centre crops (0..1 across and down), chosen by the user when an
+  /// image doesn't match a screen's shape. Null means the middle.
+  RealColumn get focusX => real().nullable()();
+  RealColumn get focusY => real().nullable()();
+
   @override
   List<Set<Column>> get uniqueKeys => [
     {source, sourceId},
@@ -96,7 +101,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -104,6 +109,10 @@ class AppDatabase extends _$AppDatabase {
       if (from < 2) {
         await m.addColumn(applyHistory, applyHistory.viaHistory);
         await m.addColumn(applyHistory, applyHistory.fit);
+      }
+      if (from < 3) {
+        await m.addColumn(wallpapers, wallpapers.focusX);
+        await m.addColumn(wallpapers, wallpapers.focusY);
       }
     },
     beforeOpen: (details) async {

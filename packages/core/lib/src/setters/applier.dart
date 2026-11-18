@@ -20,10 +20,7 @@ class WallpaperApplier {
     bool fromHistory = false,
   }) async {
     if (targets.isEmpty) return;
-    final path = library.absolutePath(item);
-    await setter.apply([
-      for (final target in targets) Assignment(target: target, imagePath: path, fit: fit),
-    ]);
+    await setter.apply([for (final target in targets) _assignment(target, item, fit)]);
     final ids = [for (final t in targets) t.id];
     await library.recordApplied(item, ids, viaHistory: fromHistory, fit: fit);
     if (!fromHistory) await history.resetCursors(ids);
@@ -34,8 +31,7 @@ class WallpaperApplier {
   Future<void> applyMany(Map<DisplayTarget, LibraryItem> assignments, {FitMode fit = FitMode.fill}) async {
     if (assignments.isEmpty) return;
     await setter.apply([
-      for (final MapEntry(key: target, value: item) in assignments.entries)
-        Assignment(target: target, imagePath: library.absolutePath(item), fit: fit),
+      for (final MapEntry(key: target, value: item) in assignments.entries) _assignment(target, item, fit),
     ]);
     final byItem = <int, (LibraryItem, List<String>)>{};
     for (final MapEntry(key: target, value: item) in assignments.entries) {
@@ -46,6 +42,14 @@ class WallpaperApplier {
       await history.resetCursors(ids);
     }
   }
+
+  Assignment _assignment(DisplayTarget target, LibraryItem item, FitMode fit) => Assignment(
+    target: target,
+    imagePath: library.absolutePath(item),
+    fit: fit,
+    focus: item.focus,
+    imageSize: item.size,
+  );
 
   /// Puts the previous image back on [target]. Null if there's nothing older.
   Future<LibraryItem?> previous(DisplayTarget target) => _step(target, back: true);

@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/attribution.dart';
+import '../models/crop.dart';
 import '../models/display_target.dart';
 import '../models/orientation.dart';
 import '../settings/settings_store.dart';
@@ -12,6 +13,7 @@ import 'database.dart';
 import 'hashing.dart';
 import 'image_header.dart';
 import 'library_layout.dart';
+import 'library_storage.dart';
 import 'sidecar.dart';
 
 final _log = Logger('Library');
@@ -159,37 +161,49 @@ final class ImportResult {
       'ImportResult(imported: $imported, duplicates: $duplicates, failed: $failed)';
 }
 
+/// Opens the storage for a stored library root (a path or, on Android, a
+/// picked folder's URI).
+typedef StorageOpener = LibraryStorage Function(String root);
+
 /// The downloaded wallpapers: files in the library folder plus their rows in
 /// the database. Paths are stored relative to the folder.
 class WallpaperLibrary {
-  WallpaperLibrary(this._db, this._settings);
+  WallpaperLibrary(this._db, this._settings, {StorageOpener? openStorage})
+    : _open = openStorage ?? LocalLibraryStorage.new;
 
   final AppDatabase _db;
   final SettingsStore _settings;
-  String? _root;
+  final StorageOpener _open;
+  LibraryStorage? _storage;
 
-  /// The library folder, or null before the user has chosen one.
-  String? get root => _root;
+  /// The library folder (a path, or a picked folder's URI on Android), or
+  /// null before the user has chosen one.
+  String? get root => _storage?.root;
 
-  String get _requireRoot =>
-      _root ?? (throw LibraryException('No library folder has been chosen yet.'));
+  /// Where the files are. Throws before a folder has been chosen.
+  LibraryStorage get storage =>
+      _storage ?? (throw LibraryException('No library folder has been chosen yet.'));
+
+  /// Shown to the user.
+  String? get displayName => _storage?.displayName;
 
   Future<void> load() async {
-    _root = await _settings.get(SettingsKeys.libraryRoot);
+    final root = await _settings.get(SettingsKeys.libraryRoot);
+    _storage = root == null ? null : _open(root);
   }
 
-  /// Points the library at [path] without moving anything. Run [rescan] after.
-  Future<void> setRoot(String path) async {
-    final normalised = p.normalize(p.absolute(path));
-    await Directory(normalised).create(recursive: true);
-    await _settings.set(SettingsKeys.libraryRoot, normalised);
-    _root = normalised;
+  /// Points the library at [root] without moving anything. Run [rescan] after.
+  Future<void> setRoot(String root) async {
+    final storage = _open(root);
+    await storage.prepare();
+    await _settings.set(SettingsKeys.libraryRoot, storage.root);
+    _storage = storage;
   }
 
+  /// A file path, or (Android, picked folder) a `content://` URI.
   String absolutePath(LibraryItem item) => absoluteFor(item.relativePath);
 
-  String absoluteFor(String relativePath) =>
-      p.joinAll([_requireRoot, ...p.posix.split(relativePath)]);
+  String absoluteFor(String relativePath) => storage.locate(relativePath);
 
   Stream<List<LibraryItem>> watch({
     LibrarySort sort = LibrarySort.newest,
@@ -334,6 +348,8 @@ class WallpaperLibrary {
             dominantColour: Value(meta.dominantColour),
             isFavourite: Value(meta.favourite),
             isHidden: Value(meta.hidden),
+            focusX: Value(meta.focus?.x),
+            focusY: Value(meta.focus?.y),
           ),
         );
     return (await byId(id))!;
@@ -341,16 +357,14 @@ class WallpaperLibrary {
 
   /// Deletes the image, its sidecar and its database entry.
   Future<void> delete(LibraryItem item) async {
-    final path = absolutePath(item);
+    final path = item.relativePath;
     try {
-      final image = File(path);
-      if (await image.exists()) await image.delete();
+      await storage.delete(path);
     } on FileSystemException catch (e) {
-      throw LibraryException("Couldn't delete ${p.basename(path)}.", cause: e);
+      throw LibraryException("Couldn't delete ${p.posix.basename(path)}.", cause: e);
     }
     try {
-      final sidecar = File(LibraryLayout.sidecarFor(path));
-      if (await sidecar.exists()) await sidecar.delete();
+      await storage.delete(LibraryLayout.sidecarFor(path));
     } on FileSystemException catch (e) {
       _log.warning('Left a sidecar behind for $path: $e');
     }
@@ -363,6 +377,12 @@ class WallpaperLibrary {
   /// Hidden images stay in the library but are left out of rotation.
   Future<void> setHidden(LibraryItem item, bool hidden) =>
       _update(item, WallpapersCompanion(isHidden: Value(hidden)));
+
+  /// Where crops of this image are centred; null for the middle.
+  Future<void> setFocus(LibraryItem item, FocusPoint? focus) => _update(
+    item,
+    WallpapersCompanion(focusX: Value(focus?.x), focusY: Value(focus?.y)),
+  );
 
   /// Replaces the tags, dropping blanks and case-insensitive repeats.
   Future<void> setTags(LibraryItem item, List<String> tags) {
@@ -383,8 +403,8 @@ class WallpaperLibrary {
   /// Keeps the sidecar in step with the library state (tags, favourite,
   /// hidden) so a rescan restores it. Creates one for local images.
   Future<void> _writeSidecar(LibraryItem item) async {
-    final path = LibraryLayout.sidecarFor(absolutePath(item));
-    final base = await Sidecar.read(path) ??
+    final path = LibraryLayout.sidecarFor(item.relativePath);
+    final base = await _readSidecar(path) ??
         Sidecar(
           source: item.source,
           sourceId: item.sourceId,
@@ -401,11 +421,25 @@ class WallpaperLibrary {
           downloadedAt: item.addedAt,
         );
     try {
-      await base
-          .copyWith(tags: item.tags, favourite: item.isFavourite, hidden: item.isHidden)
-          .write(path);
+      final updated = base.copyWith(
+        tags: item.tags,
+        favourite: item.isFavourite,
+        hidden: item.isHidden,
+        focus: item.focus,
+      );
+      await storage.writeText(path, updated.encode());
     } on FileSystemException catch (e) {
       _log.warning("Couldn't update the sidecar for ${item.relativePath}: $e");
+    }
+  }
+
+  Future<Sidecar?> _readSidecar(String path) async {
+    try {
+      final text = await storage.readText(path);
+      return text == null ? null : Sidecar.parse(text, name: path);
+    } on FileSystemException catch (e) {
+      _log.warning("Couldn't read the sidecar $path: $e");
+      return null;
     }
   }
 
@@ -442,10 +476,9 @@ class WallpaperLibrary {
   /// Brings the database in line with the folder: adds images that appeared,
   /// follows images that moved, and drops entries whose file is gone.
   Future<RescanResult> rescan() async {
-    final root = _requireRoot;
-    final dir = Directory(root);
-    if (!await dir.exists()) {
-      throw LibraryException('The library folder $root no longer exists.');
+    final storage = this.storage;
+    if (!await storage.available()) {
+      throw LibraryException('The library folder ${storage.displayName} no longer exists.');
     }
 
     final rows = await _db.select(_db.wallpapers).get();
@@ -453,12 +486,9 @@ class WallpaperLibrary {
     final seen = <String>{};
     final newFiles = <String>[];
 
-    final entities = dir
-        .list(recursive: true, followLinks: false)
-        .handleError((Object e) => _log.warning('Skipping during rescan: $e'));
-    await for (final entity in entities) {
-      if (entity is! File || !LibraryLayout.isImage(entity.path)) continue;
-      final relative = LibraryLayout.toStored(p.relative(entity.path, from: root));
+    final files = storage.list().handleError((Object e) => _log.warning('Skipping during rescan: $e'));
+    await for (final relative in files) {
+      if (!LibraryLayout.isImage(relative)) continue;
       if (relative.split('/').any((part) => part.startsWith('.'))) continue;
       if (byPath.containsKey(relative)) {
         seen.add(relative);
@@ -474,9 +504,8 @@ class WallpaperLibrary {
     var added = 0, moved = 0, skipped = 0;
 
     for (final relative in newFiles..sort()) {
-      final path = absoluteFor(relative);
       try {
-        final hash = await hashFile(path);
+        final hash = await storage.sha256(relative);
         final movedRow = missingByHash.remove(hash);
         if (movedRow != null) {
           await (_db.update(_db.wallpapers)..where((t) => t.id.equals(movedRow.id)))
@@ -488,13 +517,13 @@ class WallpaperLibrary {
           skipped++; // a copy of something already in the library
           continue;
         }
-        final size = await readImageSizeFromFile(path);
+        final size = await storage.imageSize(relative);
         if (size == null) {
           _log.warning("Can't read image size of $relative; skipping");
           skipped++;
           continue;
         }
-        var meta = await Sidecar.read(LibraryLayout.sidecarFor(path));
+        var meta = await _readSidecar(LibraryLayout.sidecarFor(relative));
         if (meta == null || await bySource(meta.source, meta.sourceId) != null) {
           meta = Sidecar.local(hash);
         }
@@ -503,7 +532,7 @@ class WallpaperLibrary {
           relativePath: relative,
           width: size.width,
           height: size.height,
-          fileSize: await File(path).length(),
+          fileSize: await storage.length(relative),
           sha256: hash,
         );
         added++;
@@ -523,42 +552,74 @@ class WallpaperLibrary {
       removed: missingByHash.length,
       skipped: skipped,
     );
-    _log.info('Rescanned $root: $result');
+    _log.info('Rescanned ${storage.displayName}: $result');
     return result;
   }
 
   /// Moves every image (and its sidecar) to [newRoot] and switches to it.
   Future<void> moveTo(String newRoot) async {
-    final oldRoot = _requireRoot;
-    final target = p.normalize(p.absolute(newRoot));
-    if (p.equals(oldRoot, target)) return;
-    if (p.isWithin(oldRoot, target)) {
-      throw LibraryException("The new folder can't be inside the current library folder.");
+    final from = storage;
+    final to = _open(newRoot);
+    if (from.root == to.root) return;
+    if (from.directory case final old?) {
+      if (to.directory case final target? when p.isWithin(old, target)) {
+        throw LibraryException("The new folder can't be inside the current library folder.");
+      }
     }
-    await Directory(target).create(recursive: true);
-    for (final item in await _db.select(_db.wallpapers).get()) {
-      final from = absolutePath(item);
-      final to = p.joinAll([target, ...p.posix.split(item.relativePath)]);
-      await _moveFile(from, to);
-      await _moveFile(LibraryLayout.sidecarFor(from), LibraryLayout.sidecarFor(to));
+    await to.prepare();
+    final moved = <String>[];
+    try {
+      for (final item in await _db.select(_db.wallpapers).get()) {
+        for (final path in [item.relativePath, LibraryLayout.sidecarFor(item.relativePath)]) {
+          if (await _transfer(from, to, path)) moved.add(path);
+        }
+      }
+    } on Object catch (e) {
+      // Put back what already went, so the library isn't left in two halves.
+      _log.warning('Moving the library failed after ${moved.length} files; moving them back', e);
+      for (final path in moved.reversed) {
+        try {
+          await _transfer(to, from, path);
+        } on Object catch (e) {
+          _log.warning('Left $path in ${to.displayName}: $e');
+        }
+      }
+      throw LibraryException("Couldn't move your library to ${to.displayName}: $e", cause: e);
     }
-    await setRoot(target);
+    await setRoot(to.root);
+  }
+
+  /// Moves one file between storages. False if there was nothing to move.
+  static Future<bool> _transfer(LibraryStorage from, LibraryStorage to, String path) async {
+    if (!await from.exists(path)) return false;
+    if (from.directory != null) {
+      // A local file can go in directly; moving it removes it here.
+      await to.putFile(from.locate(path), path, move: true);
+      return true;
+    }
+    final staging = await to.stagingFile(path);
+    await from.getFile(path, staging);
+    await to.putFile(staging, path, move: true);
+    await from.delete(path);
+    return true;
   }
 
   /// Copies (or moves) every image in [folder], including sub-folders, into
   /// `local/<folder name>/` in the library. Images already in the library are
-  /// skipped.
-  Future<ImportResult> importFolder(String folder, {bool move = false}) async {
-    final root = _requireRoot;
+  /// skipped. [folderName] overrides the folder's own name.
+  Future<ImportResult> importFolder(String folder, {bool move = false, String? folderName}) async {
+    final storage = this.storage;
     final source = p.normalize(p.absolute(folder));
-    if (p.equals(source, root) || p.isWithin(root, source)) {
-      throw LibraryException('That folder is already part of your library.');
-    }
-    if (p.isWithin(source, root)) {
-      throw LibraryException(
-        "Your library is inside that folder, so it can't be imported. "
-        "Pick a folder that doesn't contain the library.",
-      );
+    if (storage.directory case final root?) {
+      if (p.equals(source, root) || p.isWithin(root, source)) {
+        throw LibraryException('That folder is already part of your library.');
+      }
+      if (p.isWithin(source, root)) {
+        throw LibraryException(
+          "Your library is inside that folder, so it can't be imported. "
+          "Pick a folder that doesn't contain the library.",
+        );
+      }
     }
     final dir = Directory(source);
     if (!await dir.exists()) throw LibraryException('$source no longer exists.');
@@ -575,7 +636,7 @@ class WallpaperLibrary {
     }
     files.sort();
 
-    final folderName = p.basename(source).replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    final name = (folderName ?? p.basename(source)).replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
     var imported = 0, duplicates = 0, failed = 0;
     for (final file in files) {
       try {
@@ -591,21 +652,16 @@ class WallpaperLibrary {
           continue;
         }
         final relative = await _freeRelativePath(
-          p.posix.join(Sidecar.localSource, folderName, LibraryLayout.toStored(p.relative(file, from: source))),
+          p.posix.join(Sidecar.localSource, name, LibraryLayout.toStored(p.relative(file, from: source))),
         );
-        final destination = absoluteFor(relative);
-        await File(destination).parent.create(recursive: true);
-        if (move) {
-          await _moveFile(file, destination);
-        } else {
-          await File(file).copy(destination);
-        }
+        final fileSize = await File(file).length();
+        await storage.putFile(file, relative, move: move);
         await insert(
           Sidecar.local(hash),
           relativePath: relative,
           width: size.width,
           height: size.height,
-          fileSize: await File(destination).length(),
+          fileSize: fileSize,
           sha256: hash,
         );
         imported++;
@@ -626,21 +682,18 @@ class WallpaperLibrary {
       final inDb = await (_db.select(_db.wallpapers)
             ..where((t) => t.relativePath.equals(candidate)))
           .getSingleOrNull();
-      if (inDb == null && !await File(absoluteFor(candidate)).exists()) return candidate;
+      if (inDb == null && !await storage.exists(candidate)) return candidate;
       candidate = '${p.posix.withoutExtension(relative)} ($n)${p.posix.extension(relative)}';
     }
   }
+}
 
-  static Future<void> _moveFile(String from, String to) async {
-    final file = File(from);
-    if (!await file.exists()) return;
-    await File(to).parent.create(recursive: true);
-    try {
-      await file.rename(to);
-    } on FileSystemException {
-      // Different drive: rename can't cross file systems.
-      await file.copy(to);
-      await file.delete();
-    }
-  }
+extension LibraryItemFocus on LibraryItem {
+  /// Where crops of this image are centred; null for the middle.
+  FocusPoint? get focus => switch ((focusX, focusY)) {
+    (final x?, final y?) => (x: x, y: y),
+    _ => null,
+  };
+
+  Resolution get size => (width: width, height: height);
 }

@@ -1,3 +1,6 @@
+import 'crop.dart';
+import 'orientation.dart';
+
 /// Which surface of a display a wallpaper goes on.
 enum TargetSurface { home, lock }
 
@@ -57,16 +60,20 @@ final class Assignment {
     required this.imagePath,
     this.fit = FitMode.fill,
     this.focus,
+    this.imageSize,
   });
 
   final DisplayTarget target;
 
-  /// Absolute path of the image file.
+  /// Absolute path of the image file, or (Android) a `content://` URI.
   final String imagePath;
   final FitMode fit;
 
   /// Where to centre the crop, 0..1 on each axis. Null means the middle.
-  final ({double x, double y})? focus;
+  final FocusPoint? focus;
+
+  /// The image's size, when known, so setters that crop needn't read it.
+  final Resolution? imageSize;
 }
 
 final class SetterCapabilities {
@@ -75,6 +82,7 @@ final class SetterCapabilities {
     required this.lockScreen,
     this.fitModes = const [],
     this.note,
+    this.cropsToFocus = false,
   });
 
   static const none = SetterCapabilities(perTarget: false, lockScreen: false);
@@ -86,4 +94,8 @@ final class SetterCapabilities {
 
   /// Explains what isn't available, when something isn't.
   final String? note;
+
+  /// Crops images to each screen's shape around [Assignment.focus], so it's
+  /// worth asking the user where to crop (Android).
+  final bool cropsToFocus;
 }

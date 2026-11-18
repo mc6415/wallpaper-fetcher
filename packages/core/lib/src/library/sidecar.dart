@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:logging/logging.dart';
 
 import '../models/attribution.dart';
+import '../models/crop.dart';
 import '../models/remote_wallpaper.dart';
 
 final _log = Logger('Sidecar');
@@ -23,6 +24,7 @@ final class Sidecar {
     this.downloadedAt,
     this.favourite = false,
     this.hidden = false,
+    this.focus,
   });
 
   factory Sidecar.fromRemote(RemoteWallpaper w, {DateTime? downloadedAt}) =>
@@ -62,6 +64,10 @@ final class Sidecar {
       downloadedAt: DateTime.tryParse(json['downloadedAt'] as String? ?? ''),
       favourite: json['favourite'] == true,
       hidden: json['hidden'] == true,
+      focus: switch (json['focus']) {
+        {'x': final num x, 'y': final num y} => (x: x.toDouble(), y: y.toDouble()),
+        _ => null,
+      },
     );
   }
 
@@ -82,7 +88,12 @@ final class Sidecar {
   final bool favourite;
   final bool hidden;
 
-  Sidecar copyWith({List<String>? tags, bool? favourite, bool? hidden}) => Sidecar(
+  /// Where crops are centred, when the user has chosen.
+  final FocusPoint? focus;
+
+  static const _unset = Object();
+
+  Sidecar copyWith({List<String>? tags, bool? favourite, bool? hidden, Object? focus = _unset}) => Sidecar(
     source: source,
     sourceId: sourceId,
     pageUrl: pageUrl,
@@ -94,6 +105,7 @@ final class Sidecar {
     downloadedAt: downloadedAt,
     favourite: favourite ?? this.favourite,
     hidden: hidden ?? this.hidden,
+    focus: identical(focus, _unset) ? this.focus : focus as FocusPoint?,
   );
 
   Map<String, Object?> toJson() => {
@@ -110,25 +122,33 @@ final class Sidecar {
     'downloadedAt': downloadedAt?.toUtc().toIso8601String(),
     'favourite': favourite,
     'hidden': hidden,
+    if (focus case final f?) 'focus': {'x': f.x, 'y': f.y},
   };
+
+  /// Null if [text] isn't a sidecar. [name] is for the log.
+  static Sidecar? parse(String text, {String? name}) {
+    try {
+      final json = jsonDecode(text);
+      if (json is! Map) return null;
+      return Sidecar.fromJson(json.cast<String, Object?>());
+    } on Object catch (e) {
+      _log.warning('Ignoring unreadable sidecar ${name ?? ''}: $e');
+      return null;
+    }
+  }
+
+  String encode() => const JsonEncoder.withIndent('  ').convert(toJson());
 
   /// Returns null if there is no sidecar or it can't be read.
   static Future<Sidecar?> read(String path) async {
     final file = File(path);
     if (!await file.exists()) return null;
-    try {
-      final json = jsonDecode(await file.readAsString());
-      if (json is! Map) return null;
-      return Sidecar.fromJson(json.cast<String, Object?>());
-    } on Object catch (e) {
-      _log.warning('Ignoring unreadable sidecar $path: $e');
-      return null;
-    }
+    return parse(await file.readAsString(), name: path);
   }
 
   Future<void> write(String path) async {
     final tmp = File('$path.tmp');
-    await tmp.writeAsString(const JsonEncoder.withIndent('  ').convert(toJson()));
+    await tmp.writeAsString(encode());
     await tmp.rename(path);
   }
 }

@@ -23,8 +23,18 @@ Future<String> defaultLibraryDirectory() async {
   if (Platform.isWindows) {
     return p.join(Platform.environment['USERPROFILE'] ?? '.', 'Pictures', 'Wallpapers');
   }
+  if (Platform.isAndroid) {
+    // The app's own folder on shared storage: no permissions needed, visible
+    // over USB, but removed when the app is uninstalled.
+    final external = await getExternalStorageDirectory();
+    if (external != null) return p.join(external.path, 'Wallpapers');
+  }
   return p.join((await getApplicationDocumentsDirectory()).path, 'Wallpapers');
 }
+
+/// Opening folders and revealing files is for desktops; phones have no
+/// general file manager to hand them to.
+bool get canOpenFolders => Platform.isLinux || Platform.isWindows || Platform.isMacOS;
 
 Future<void> openFolder(String path) async {
   if (!await launchUrl(Uri.file(path))) _log.warning("Couldn't open $path");

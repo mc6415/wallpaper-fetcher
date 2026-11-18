@@ -33,8 +33,8 @@ wallpaper-fetcher/
 │   ├── cli/                      # wallpaper-fetcher next|previous|favourite|apply|status (Phase 3)
 │   └── app/                      # Flutter app
 │       ├── lib/features/         # browse/ library/ detail/ rotation/ settings/
-│       ├── lib/platform/         # Android channel, tray, accent colour
-│       └── android/.../WallpaperChannel.kt
+│       ├── lib/platform/         # tray, accent colour; android/ (setter, picked folders, rotation job)
+│       └── android/.../wallpaperfetcher/  # WallpaperChannel, StorageChannel + SafTree, RotationWorker
 └── .github/workflows/            # Phase 6
 ```
 
@@ -42,6 +42,10 @@ wallpaper-fetcher/
   itself through `core`.
 - The database stores file paths relative to the library folder, so moving the library is a
   plain file move.
+- The library reaches its files through `LibraryStorage`: a plain folder
+  (`LocalLibraryStorage`) everywhere, or on Android a folder picked with the system picker
+  (`SafLibraryStorage`, backed by `StorageChannel.kt`), which has no file paths. Such files
+  are addressed as `<tree uri>#<relative path>`.
 
 ## Core interfaces
 
@@ -82,6 +86,31 @@ desktop monitors and the Fold's screens use the same model.
   history before picking anew. The CLI talks to the running app over a Unix socket and
   falls back to opening the library itself; the same `CommandHandler` serves both.
 - Phase order: Android is Phase 4 and Windows Phase 5 (swapped 2026-11-17).
+- Phase 4 (2026-11-18):
+  - **Fold screens work separately.** One UI keeps a wallpaper per screen and reads extra
+    bits in `which`: 16 for the cover ("sub") screen, 4 for the main screen. The public
+    `WallpaperManager.setStream(stream, crop, allowBackup, which)` passes them through, so
+    `which` = 5/17 (home) and 6/18 (lock). Without a screen bit One UI changes only the
+    screen in use. `SEM_FLAG_SUB_DISPLAY` (16) is on Samsung's SDK list and readable by
+    reflection, which is how a Samsung foldable is recognised (with the hinge sensor and
+    two screen sizes); the main-screen bit (`FLAG_DISPLAY_PHONE`) is hidden, so 4 is a
+    constant. Checked on the SM-F976B (One UI 9, Android 17) with `dumpsys wallpaper`,
+    which lists the four wallpapers separately.
+  - Other foldables: per-screen crops (`setStreamWithCrops`) aren't public API in SDK 37,
+    so they get one image cropped for the screen in use.
+  - Android crops to fill only. Each image can have a focus point (database + sidecar),
+    chosen in a crop screen that shows a frame per screen shape; rotation uses it too.
+  - Background rotation: `androidx.work` called directly from `RotationWorker.kt`, which
+    starts a headless Flutter engine running `rotationWorkerMain`. Not the `workmanager`
+    plugin: engines it creates only get pub plugins, not the app's own channels. The job
+    checks every 15 minutes to an hour (`RotationService.backgroundCheckInterval`) and
+    counts a change due within half a check as due. Both engines share one database
+    connection (drift's `shareAcrossIsolates`), so the open app sees background changes.
+  - Material You: `android.R.color.system_accent1_500` read over the channel and used as
+    the seed colour, like the desktop accent. No `dynamic_color` package.
+  - Library on a picked folder: `ACTION_OPEN_DOCUMENT_TREE` with a persisted permission,
+    released when the library moves away. Importing on Android copies from a picked folder
+    (never moves).
 - Phase 2: Wikimedia Commons Picture of the Day replaces NASA APOD (APOD API broken);
   Wallhaven searches default to the General category only. Pexels dropped: its API
   guidelines forbid wallpaper apps. Unsplash treats setting a wallpaper as a download,
@@ -102,8 +131,11 @@ desktop monitors and the Fold's screens use the same model.
 | tray_manager 0.9 + window_manager 0.7 | Tray icon, hide to tray on close (their new nativeapi-based APIs, not the deprecated `legacy` bridge) | 3 |
 | args | CLI parsing | 3 |
 | win32 | Windows wallpaper COM API | 5 |
-| dynamic_color, workmanager | Material You, Android background rotation | 4 |
+| androidx.work (Gradle, not pub) | Android background rotation | 4 |
 
 ## Known risks
-1. Fold cover screen relies on an undocumented Samsung flag (Phase 4).
+1. Fold cover screen relies on undocumented One UI `which` bits. Works on One UI 9 /
+   Android 17; a future One UI could change them.
 2. API key storage on KDE needs KWallet's Secret Service to be enabled (check in Phase 2).
+3. WorkManager timing on Android is approximate and can be delayed further by battery
+   saving (Doze, app standby).

@@ -262,6 +262,24 @@ class $WallpapersTable extends Wallpapers
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _focusXMeta = const VerificationMeta('focusX');
+  @override
+  late final GeneratedColumn<double> focusX = GeneratedColumn<double>(
+    'focus_x',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _focusYMeta = const VerificationMeta('focusY');
+  @override
+  late final GeneratedColumn<double> focusY = GeneratedColumn<double>(
+    'focus_y',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -287,6 +305,8 @@ class $WallpapersTable extends Wallpapers
     applyCount,
     isFavourite,
     isHidden,
+    focusX,
+    focusY,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -457,6 +477,18 @@ class $WallpapersTable extends Wallpapers
         isHidden.isAcceptableOrUnknown(data['is_hidden']!, _isHiddenMeta),
       );
     }
+    if (data.containsKey('focus_x')) {
+      context.handle(
+        _focusXMeta,
+        focusX.isAcceptableOrUnknown(data['focus_x']!, _focusXMeta),
+      );
+    }
+    if (data.containsKey('focus_y')) {
+      context.handle(
+        _focusYMeta,
+        focusY.isAcceptableOrUnknown(data['focus_y']!, _focusYMeta),
+      );
+    }
     return context;
   }
 
@@ -566,6 +598,14 @@ class $WallpapersTable extends Wallpapers
         DriftSqlType.bool,
         data['${effectivePrefix}is_hidden'],
       )!,
+      focusX: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}focus_x'],
+      ),
+      focusY: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}focus_y'],
+      ),
     );
   }
 
@@ -616,6 +656,11 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
 
   /// Kept in the library but left out of rotation.
   final bool isHidden;
+
+  /// Where to centre crops (0..1 across and down), chosen by the user when an
+  /// image doesn't match a screen's shape. Null means the middle.
+  final double? focusX;
+  final double? focusY;
   const LibraryItem({
     required this.id,
     required this.source,
@@ -640,6 +685,8 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
     required this.applyCount,
     required this.isFavourite,
     required this.isHidden,
+    this.focusX,
+    this.focusY,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -693,6 +740,12 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
     map['apply_count'] = Variable<int>(applyCount);
     map['is_favourite'] = Variable<bool>(isFavourite);
     map['is_hidden'] = Variable<bool>(isHidden);
+    if (!nullToAbsent || focusX != null) {
+      map['focus_x'] = Variable<double>(focusX);
+    }
+    if (!nullToAbsent || focusY != null) {
+      map['focus_y'] = Variable<double>(focusY);
+    }
     return map;
   }
 
@@ -739,6 +792,12 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
       applyCount: Value(applyCount),
       isFavourite: Value(isFavourite),
       isHidden: Value(isHidden),
+      focusX: focusX == null && nullToAbsent
+          ? const Value.absent()
+          : Value(focusX),
+      focusY: focusY == null && nullToAbsent
+          ? const Value.absent()
+          : Value(focusY),
     );
   }
 
@@ -773,6 +832,8 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
       applyCount: serializer.fromJson<int>(json['applyCount']),
       isFavourite: serializer.fromJson<bool>(json['isFavourite']),
       isHidden: serializer.fromJson<bool>(json['isHidden']),
+      focusX: serializer.fromJson<double?>(json['focusX']),
+      focusY: serializer.fromJson<double?>(json['focusY']),
     );
   }
   @override
@@ -804,6 +865,8 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
       'applyCount': serializer.toJson<int>(applyCount),
       'isFavourite': serializer.toJson<bool>(isFavourite),
       'isHidden': serializer.toJson<bool>(isHidden),
+      'focusX': serializer.toJson<double?>(focusX),
+      'focusY': serializer.toJson<double?>(focusY),
     };
   }
 
@@ -831,6 +894,8 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
     int? applyCount,
     bool? isFavourite,
     bool? isHidden,
+    Value<double?> focusX = const Value.absent(),
+    Value<double?> focusY = const Value.absent(),
   }) => LibraryItem(
     id: id ?? this.id,
     source: source ?? this.source,
@@ -861,6 +926,8 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
     applyCount: applyCount ?? this.applyCount,
     isFavourite: isFavourite ?? this.isFavourite,
     isHidden: isHidden ?? this.isHidden,
+    focusX: focusX.present ? focusX.value : this.focusX,
+    focusY: focusY.present ? focusY.value : this.focusY,
   );
   LibraryItem copyWithCompanion(WallpapersCompanion data) {
     return LibraryItem(
@@ -907,6 +974,8 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
           ? data.isFavourite.value
           : this.isFavourite,
       isHidden: data.isHidden.present ? data.isHidden.value : this.isHidden,
+      focusX: data.focusX.present ? data.focusX.value : this.focusX,
+      focusY: data.focusY.present ? data.focusY.value : this.focusY,
     );
   }
 
@@ -935,7 +1004,9 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
           ..write('lastAppliedAt: $lastAppliedAt, ')
           ..write('applyCount: $applyCount, ')
           ..write('isFavourite: $isFavourite, ')
-          ..write('isHidden: $isHidden')
+          ..write('isHidden: $isHidden, ')
+          ..write('focusX: $focusX, ')
+          ..write('focusY: $focusY')
           ..write(')'))
         .toString();
   }
@@ -965,6 +1036,8 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
     applyCount,
     isFavourite,
     isHidden,
+    focusX,
+    focusY,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -992,7 +1065,9 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
           other.lastAppliedAt == this.lastAppliedAt &&
           other.applyCount == this.applyCount &&
           other.isFavourite == this.isFavourite &&
-          other.isHidden == this.isHidden);
+          other.isHidden == this.isHidden &&
+          other.focusX == this.focusX &&
+          other.focusY == this.focusY);
 }
 
 class WallpapersCompanion extends UpdateCompanion<LibraryItem> {
@@ -1019,6 +1094,8 @@ class WallpapersCompanion extends UpdateCompanion<LibraryItem> {
   final Value<int> applyCount;
   final Value<bool> isFavourite;
   final Value<bool> isHidden;
+  final Value<double?> focusX;
+  final Value<double?> focusY;
   const WallpapersCompanion({
     this.id = const Value.absent(),
     this.source = const Value.absent(),
@@ -1043,6 +1120,8 @@ class WallpapersCompanion extends UpdateCompanion<LibraryItem> {
     this.applyCount = const Value.absent(),
     this.isFavourite = const Value.absent(),
     this.isHidden = const Value.absent(),
+    this.focusX = const Value.absent(),
+    this.focusY = const Value.absent(),
   });
   WallpapersCompanion.insert({
     this.id = const Value.absent(),
@@ -1068,6 +1147,8 @@ class WallpapersCompanion extends UpdateCompanion<LibraryItem> {
     this.applyCount = const Value.absent(),
     this.isFavourite = const Value.absent(),
     this.isHidden = const Value.absent(),
+    this.focusX = const Value.absent(),
+    this.focusY = const Value.absent(),
   }) : source = Value(source),
        sourceId = Value(sourceId),
        relativePath = Value(relativePath),
@@ -1101,6 +1182,8 @@ class WallpapersCompanion extends UpdateCompanion<LibraryItem> {
     Expression<int>? applyCount,
     Expression<bool>? isFavourite,
     Expression<bool>? isHidden,
+    Expression<double>? focusX,
+    Expression<double>? focusY,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1126,6 +1209,8 @@ class WallpapersCompanion extends UpdateCompanion<LibraryItem> {
       if (applyCount != null) 'apply_count': applyCount,
       if (isFavourite != null) 'is_favourite': isFavourite,
       if (isHidden != null) 'is_hidden': isHidden,
+      if (focusX != null) 'focus_x': focusX,
+      if (focusY != null) 'focus_y': focusY,
     });
   }
 
@@ -1153,6 +1238,8 @@ class WallpapersCompanion extends UpdateCompanion<LibraryItem> {
     Value<int>? applyCount,
     Value<bool>? isFavourite,
     Value<bool>? isHidden,
+    Value<double?>? focusX,
+    Value<double?>? focusY,
   }) {
     return WallpapersCompanion(
       id: id ?? this.id,
@@ -1178,6 +1265,8 @@ class WallpapersCompanion extends UpdateCompanion<LibraryItem> {
       applyCount: applyCount ?? this.applyCount,
       isFavourite: isFavourite ?? this.isFavourite,
       isHidden: isHidden ?? this.isHidden,
+      focusX: focusX ?? this.focusX,
+      focusY: focusY ?? this.focusY,
     );
   }
 
@@ -1257,6 +1346,12 @@ class WallpapersCompanion extends UpdateCompanion<LibraryItem> {
     if (isHidden.present) {
       map['is_hidden'] = Variable<bool>(isHidden.value);
     }
+    if (focusX.present) {
+      map['focus_x'] = Variable<double>(focusX.value);
+    }
+    if (focusY.present) {
+      map['focus_y'] = Variable<double>(focusY.value);
+    }
     return map;
   }
 
@@ -1285,7 +1380,9 @@ class WallpapersCompanion extends UpdateCompanion<LibraryItem> {
           ..write('lastAppliedAt: $lastAppliedAt, ')
           ..write('applyCount: $applyCount, ')
           ..write('isFavourite: $isFavourite, ')
-          ..write('isHidden: $isHidden')
+          ..write('isHidden: $isHidden, ')
+          ..write('focusX: $focusX, ')
+          ..write('focusY: $focusY')
           ..write(')'))
         .toString();
   }
@@ -1977,6 +2074,8 @@ typedef $$WallpapersTableCreateCompanionBuilder = WallpapersCompanion Function({
   Value<int> applyCount,
   Value<bool> isFavourite,
   Value<bool> isHidden,
+  Value<double?> focusX,
+  Value<double?> focusY,
 });
 typedef $$WallpapersTableUpdateCompanionBuilder = WallpapersCompanion Function({
   Value<int> id,
@@ -2002,6 +2101,8 @@ typedef $$WallpapersTableUpdateCompanionBuilder = WallpapersCompanion Function({
   Value<int> applyCount,
   Value<bool> isFavourite,
   Value<bool> isHidden,
+  Value<double?> focusX,
+  Value<double?> focusY,
 });
 
 final class $$WallpapersTableReferences
@@ -2157,6 +2258,16 @@ class $$WallpapersTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<double> get focusX => $composableBuilder(
+    column: $table.focusX,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get focusY => $composableBuilder(
+    column: $table.focusY,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> applyHistoryRefs(
     Expression<bool> Function($$ApplyHistoryTableFilterComposer f) f,
   ) {
@@ -2306,6 +2417,16 @@ class $$WallpapersTableOrderingComposer
     column: $table.isHidden,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<double> get focusX => $composableBuilder(
+    column: $table.focusX,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get focusY => $composableBuilder(
+    column: $table.focusY,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$WallpapersTableAnnotationComposer
@@ -2407,6 +2528,12 @@ class $$WallpapersTableAnnotationComposer
   GeneratedColumn<bool> get isHidden =>
       $composableBuilder(column: $table.isHidden, builder: (column) => column);
 
+  GeneratedColumn<double> get focusX =>
+      $composableBuilder(column: $table.focusX, builder: (column) => column);
+
+  GeneratedColumn<double> get focusY =>
+      $composableBuilder(column: $table.focusY, builder: (column) => column);
+
   Expression<T> applyHistoryRefs<T extends Object>(
     Expression<T> Function($$ApplyHistoryTableAnnotationComposer a) f,
   ) {
@@ -2484,6 +2611,8 @@ class $$WallpapersTableTableManager
                 Value<int> applyCount = const Value.absent(),
                 Value<bool> isFavourite = const Value.absent(),
                 Value<bool> isHidden = const Value.absent(),
+                Value<double?> focusX = const Value.absent(),
+                Value<double?> focusY = const Value.absent(),
               }) => WallpapersCompanion(
                 id: id,
                 source: source,
@@ -2508,6 +2637,8 @@ class $$WallpapersTableTableManager
                 applyCount: applyCount,
                 isFavourite: isFavourite,
                 isHidden: isHidden,
+                focusX: focusX,
+                focusY: focusY,
               ),
           createCompanionCallback:
               ({
@@ -2534,6 +2665,8 @@ class $$WallpapersTableTableManager
                 Value<int> applyCount = const Value.absent(),
                 Value<bool> isFavourite = const Value.absent(),
                 Value<bool> isHidden = const Value.absent(),
+                Value<double?> focusX = const Value.absent(),
+                Value<double?> focusY = const Value.absent(),
               }) => WallpapersCompanion.insert(
                 id: id,
                 source: source,
@@ -2558,6 +2691,8 @@ class $$WallpapersTableTableManager
                 applyCount: applyCount,
                 isFavourite: isFavourite,
                 isHidden: isHidden,
+                focusX: focusX,
+                focusY: focusY,
               ),
           withReferenceMapper: (p0) => p0
               .map(

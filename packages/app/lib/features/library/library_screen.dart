@@ -1,9 +1,14 @@
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:wallpaper_core/wallpaper_core.dart';
 
+import '../../platform/android/saf_storage.dart';
 import '../../platform/files.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -16,19 +21,24 @@ class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
 
   Future<void> _import(BuildContext context, WidgetRef ref) async {
-    final folder = await getDirectoryPath(confirmButtonText: 'Import this folder');
+    final phone = ref.read(isPhoneProvider);
+    final folder = phone
+        ? await PickedFolders.pick(persist: false)
+        : await getDirectoryPath(confirmButtonText: 'Import this folder');
     if (folder == null || !context.mounted) return;
+    final name = phone ? PickedFolders.describe(folder) : folder;
     final move = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Import images'),
         content: Text(
-          'Add the images in $folder (and its sub-folders) to your library? '
+          'Add the images in $name (and its sub-folders) to your library? '
           "They go into the library's \"local\" folder. Images already in your library are skipped.",
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Move them')),
+          // A picked folder on a phone is only copied from, never changed.
+          if (!phone) TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Move them')),
           FilledButton(onPressed: () => Navigator.pop(context, false), child: const Text('Copy them')),
         ],
       ),
@@ -46,7 +56,9 @@ class LibraryScreen extends ConsumerWidget {
     );
     String message;
     try {
-      final r = await ref.read(libraryProvider).importFolder(folder, move: move);
+      final r = phone
+          ? await _importPicked(ref.read(libraryProvider), folder)
+          : await ref.read(libraryProvider).importFolder(folder, move: move);
       message = [
         'Imported ${r.imported} image${r.imported == 1 ? '' : 's'}',
         if (r.duplicates > 0) '${r.duplicates} already in your library',
@@ -58,6 +70,25 @@ class LibraryScreen extends ConsumerWidget {
     if (context.mounted) {
       Navigator.of(context, rootNavigator: true).pop();
       showSnack(context, '$message.');
+    }
+  }
+
+  /// Copies a picked folder's images to a scratch folder, then imports that.
+  static Future<ImportResult> _importPicked(WallpaperLibrary library, String tree) async {
+    final scratch = Directory(
+      p.join((await getApplicationCacheDirectory()).path, 'import', '${DateTime.now().millisecondsSinceEpoch}'),
+    );
+    final source = SafLibraryStorage(tree, stagingDirectory: scratch.path);
+    try {
+      await for (final path in source.list()) {
+        if (!LibraryLayout.isImage(path) || path.split('/').any((part) => part.startsWith('.'))) continue;
+        await source.getFile(path, p.joinAll([scratch.path, ...p.posix.split(path)]));
+      }
+      if (!await scratch.exists()) return const ImportResult();
+      final name = p.posix.basename(PickedFolders.describe(tree));
+      return await library.importFolder(scratch.path, move: true, folderName: name);
+    } finally {
+      if (await scratch.exists()) await scratch.delete(recursive: true);
     }
   }
 
@@ -113,7 +144,7 @@ class LibraryScreen extends ConsumerWidget {
                 onPressed: () => _import(context, ref),
                 child: const Text('Import a folder…'),
               ),
-              if (root != null)
+              if (root != null && canOpenFolders)
                 MenuItemButton(
                   leadingIcon: const Icon(Icons.folder_open_outlined),
                   onPressed: () => openFolder(root),

@@ -95,6 +95,16 @@ class RotationService {
     return (_lastRun ?? _now()).add(every);
   }
 
+  /// How often a background job (Android's WorkManager, 15 minutes at the
+  /// least) should look in: the interval itself up to an hour, then hourly.
+  Duration get backgroundCheckInterval {
+    if (_config.pool is DailyPool) return dailyCheckInterval;
+    const shortest = Duration(minutes: 15);
+    final every = _config.interval;
+    if (every < shortest) return shortest;
+    return every > dailyCheckInterval ? dailyCheckInterval : every;
+  }
+
   Future<void> load() async {
     _config = RotationConfig.parse(await settings.get(SettingsKeys.rotationConfig));
     _paused = await settings.get(SettingsKeys.rotationPaused) == 'true';
@@ -120,9 +130,12 @@ class RotationService {
   }
 
   /// Called by the scheduler: changes the wallpaper if it's due. Null if not.
-  Future<RotationOutcome?> tick() => _serial(() async {
+  ///
+  /// A change due within [slack] counts as due: a background job that wakes a
+  /// few minutes early would otherwise wait a whole extra interval.
+  Future<RotationOutcome?> tick({Duration slack = Duration.zero}) => _serial(() async {
     final due = nextDue;
-    if (due == null || _now().isBefore(due)) return null;
+    if (due == null || _now().add(slack).isBefore(due)) return null;
     _log.info('Scheduled change (${_config.pool.toJson()})');
     try {
       return await _next(null, scheduled: true);

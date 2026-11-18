@@ -1,14 +1,14 @@
-import 'dart:io';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:wallpaper_core/wallpaper_core.dart';
 
 import '../../platform/files.dart';
+import '../../platform/library_image.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../apply/apply_sheet.dart';
+import '../apply/crop_screen.dart';
 import 'history_screen.dart';
 import 'image_viewer.dart';
 
@@ -64,11 +64,22 @@ class _Detail extends ConsumerWidget {
     }
   }
 
+  /// Choose where this image is cropped on screens of another shape.
+  Future<void> _adjustCrop(BuildContext context, WidgetRef ref) async {
+    final screens = [
+      for (final t in await ref.read(targetsProvider.future))
+        if (t.surface == TargetSurface.home) t,
+    ];
+    if (!context.mounted) return;
+    final focus = await showCropScreen(context, item: item, screens: screens, actionLabel: 'Save');
+    if (focus != null) await ref.read(libraryProvider).setFocus(item, focus);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final library = ref.watch(libraryProvider);
-    final path = library.absolutePath(item);
     final name = sourceName(ref, item.source);
+    final cropsToFocus = ref.watch(setterCapabilitiesProvider).value?.cropsToFocus ?? false;
 
     final panel = Padding(
       padding: const EdgeInsets.all(16),
@@ -109,12 +120,22 @@ class _Detail extends ConsumerWidget {
           const SizedBox(height: 8),
           _TagsEditor(item: item),
           const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: () => showInFolder(path),
-            icon: const Icon(Icons.folder_open_outlined),
-            label: const Text('Show in folder'),
-          ),
-          const SizedBox(height: 8),
+          if (cropsToFocus) ...[
+            OutlinedButton.icon(
+              onPressed: () => _adjustCrop(context, ref),
+              icon: const Icon(Icons.crop),
+              label: Text(item.focus == null ? 'Choose the crop…' : 'Adjust the crop…'),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (canOpenFolders && library.storage.directory != null) ...[
+            OutlinedButton.icon(
+              onPressed: () => showInFolder(library.absolutePath(item)),
+              icon: const Icon(Icons.folder_open_outlined),
+              label: const Text('Show in folder'),
+            ),
+            const SizedBox(height: 8),
+          ],
           OutlinedButton.icon(
             onPressed: () => _delete(context, ref),
             icon: const Icon(Icons.delete_outline),
@@ -138,7 +159,7 @@ class _Detail extends ConsumerWidget {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final image = ImageViewer(image: FileImage(File(path)));
+          final image = ImageViewer(image: LibraryImage(library.storage, item));
           if (constraints.maxWidth >= 900) {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -70,6 +70,8 @@ class _RotationScreenState extends ConsumerState<RotationScreen> {
     final monitors = [for (final t in targets) if (t.surface == TargetSurface.home) t];
     final chosen = config.screens.isEmpty ? {for (final m in monitors) m.id} : config.screens;
     final isDaily = config.pool is DailyPool;
+    final phone = ref.watch(isPhoneProvider);
+    final fitModes = ref.watch(setterCapabilitiesProvider).value?.fitModes ?? FitMode.values;
 
     Widget section(String title, Widget child, {String? hint}) => Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
@@ -102,7 +104,7 @@ class _RotationScreenState extends ConsumerState<RotationScreen> {
                   children: [
                     SwitchListTile(
                       title: const Text('Change wallpaper automatically'),
-                      subtitle: Text(_status(state)),
+                      subtitle: Text(_status(state, phone: phone)),
                       value: config.enabled,
                       onChanged: (on) => _configure(config.copyWith(enabled: on)),
                     ),
@@ -177,7 +179,10 @@ class _RotationScreenState extends ConsumerState<RotationScreen> {
                   children: [
                     for (final t in targets)
                       FilterChip(
-                        avatar: Icon(t.surface == TargetSurface.lock ? Icons.lock_outline : Icons.monitor, size: 18),
+                        avatar: Icon(
+                          t.surface == TargetSurface.lock ? Icons.lock_outline : (phone ? Icons.smartphone : Icons.monitor),
+                          size: 18,
+                        ),
                         label: Text(t.label),
                         selected: chosen.contains(t.id),
                         onSelected: (on) {
@@ -193,15 +198,27 @@ class _RotationScreenState extends ConsumerState<RotationScreen> {
                 ),
                 hint: targets.isEmpty ? ref.watch(setterCapabilitiesProvider).value?.note : null,
               ),
-              section(
-                'Fit',
-                SegmentedButton<FitMode>(
-                  segments: [for (final f in FitMode.values) ButtonSegment(value: f, label: Text(f.label))],
-                  selected: {config.fit},
-                  onSelectionChanged: (s) => _configure(config.copyWith(fit: s.single)),
+              if (fitModes.length > 1)
+                section(
+                  'Fit',
+                  SegmentedButton<FitMode>(
+                    segments: [for (final f in fitModes) ButtonSegment(value: f, label: Text(f.label))],
+                    selected: {config.fit},
+                    onSelectionChanged: (s) => _configure(config.copyWith(fit: s.single)),
+                  ),
                 ),
-              ),
-              const _ShortcutsCard(),
+              if (phone)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+                  child: Text(
+                    'Changes happen in the background, even when the app is closed. Android decides '
+                    'exactly when, so they can come a few minutes early or late. Images are cropped '
+                    'where you last chose for each one, or in the middle.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                )
+              else
+                const _ShortcutsCard(),
             ],
           ),
         ),
@@ -209,17 +226,20 @@ class _RotationScreenState extends ConsumerState<RotationScreen> {
     );
   }
 
-  String _status(RotationState state) {
-    if (!state.config.enabled) return 'Off. Next and Previous still work here, in the tray and from shortcuts.';
+  String _status(RotationState state, {required bool phone}) {
+    if (!state.config.enabled) {
+      return phone ? 'Off. Next and Previous still work here.' : 'Off. Next and Previous still work here, in the tray and from shortcuts.';
+    }
     if (state.paused) return 'Paused.';
     final due = state.nextDue;
     if (due == null) return 'On.';
     final left = due.difference(DateTime.now());
+    final about = phone ? 'about ' : '';
     final when = left.inMinutes < 1
-        ? 'within a minute'
+        ? (phone ? 'soon' : 'within a minute')
         : left.inMinutes < 60
-        ? 'in ${left.inMinutes} min'
-        : 'in ${left.inHours} h ${left.inMinutes % 60} min';
+        ? 'in $about${left.inMinutes} min'
+        : 'in $about${left.inHours} h ${left.inMinutes % 60} min';
     return state.config.pool is DailyPool ? 'On. Next check $when.' : 'On. Next change $when.';
   }
 }
