@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:wallpaper_core/wallpaper_core.dart';
 
@@ -27,6 +28,9 @@ Future<void> main(List<String> args) async {
   } on IpcAlreadyRunning {
     exit(0);
   }
+
+  // Logged because a hidden window that doesn't draw again looks like a bug.
+  AppLifecycleListener(onStateChange: (state) => Logger('Lifecycle').info(state.name));
 
   runApp(
     ProviderScope(

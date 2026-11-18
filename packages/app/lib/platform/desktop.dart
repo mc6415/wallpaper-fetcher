@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show Size;
 
+import 'package:flutter/scheduler.dart';
 import 'package:logging/logging.dart';
 import 'package:tray_manager/tray_manager.dart' as tray;
 import 'package:wallpaper_core/wallpaper_core.dart';
@@ -71,9 +73,34 @@ class DesktopIntegration {
   }
 
   Future<void> show() async {
-    _window ??= win.WindowManager.instance.getCurrent();
-    _window?.show();
-    _window?.focus();
+    final window = _window ??= win.WindowManager.instance.getCurrent();
+    if (window == null) return;
+    final wasHidden = !window.isVisible;
+    _log.info('Show window${wasHidden ? ' (was hidden)' : ''}');
+    window.show();
+    window.focus();
+    if (wasHidden) _redrawAfterHide(window);
+  }
+
+  /// Flutter's Linux embedder doesn't draw into a window that was hidden and
+  /// shown again: the content stays black, even with forced frames. Changing
+  /// the size makes it set its surface up again, so nudge it by a pixel and
+  /// back once the compositor has mapped the window.
+  void _redrawAfterHide(win.Window window) {
+    Timer(const Duration(milliseconds: 150), () {
+      if (window.isMaximized) {
+        // A maximised window ignores resizes; restore and re-maximise.
+        window.unmaximize();
+        Timer(const Duration(milliseconds: 150), window.maximize);
+        return;
+      }
+      final size = window.contentSize.toSize();
+      window.contentSize = Size(size.width + 1, size.height).toNative();
+      Timer(const Duration(milliseconds: 150), () {
+        window.contentSize = size.toNative();
+        SchedulerBinding.instance.scheduleForcedFrame();
+      });
+    });
   }
 
   Future<void> quit() async {
