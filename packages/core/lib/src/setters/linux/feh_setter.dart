@@ -25,7 +25,7 @@ class FehSetter implements WallpaperSetter {
   Future<SetterCapabilities> capabilities() async => const SetterCapabilities(
     perTarget: true,
     lockScreen: false,
-    fitModes: FitMode.values,
+    fitModes: FitMode.perScreen,
     note: 'All monitors share one fit mode.',
   );
 
@@ -38,6 +38,7 @@ class FehSetter implements WallpaperSetter {
     FitMode.fit => '--bg-max',
     FitMode.stretch => '--bg-scale',
     FitMode.centre => '--bg-center',
+    FitMode.span => '--bg-fill',
   };
 
   /// The image paths in a `~/.fehbg` script, in monitor order.

@@ -15,8 +15,17 @@ void main() {
   test('shortcut command uses the launcher\'s full path when it exists', () {
     final home = Directory.systemTemp.createTempSync('wf_home_');
     addTearDown(() => home.deleteSync(recursive: true));
-    expect(shortcutCommand({'HOME': home.path, 'PATH': '/nonexistent'}), 'wallpaper-fetcher');
+    expect(shortcutCommand({'HOME': home.path, 'PATH': '/nonexistent'}, false), 'wallpaper-fetcher');
     final launcher = File(p.join(home.path, '.local', 'bin', 'wallpaper-fetcher'))..createSync(recursive: true);
-    expect(shortcutCommand({'HOME': home.path, 'PATH': '/nonexistent'}), launcher.path);
+    expect(shortcutCommand({'HOME': home.path, 'PATH': '/nonexistent'}, false), launcher.path);
+  });
+
+  test('on Windows the shortcut command is found on PATH (separated by ;), and quoted if needed', () {
+    final home = Directory.systemTemp.createTempSync('wf_win_');
+    addTearDown(() => home.deleteSync(recursive: true));
+    expect(shortcutCommand({'PATH': ''}, true), 'wallpaper-fetcher.exe');
+    final dir = Directory(p.join(home.path, 'Wallpaper Fetcher'))..createSync();
+    final exe = File(p.join(dir.path, 'wallpaper_fetcher.exe'))..createSync();
+    expect(shortcutCommand({'PATH': '/nonexistent;${dir.path}'}, true), '"${exe.path}"');
   });
 }

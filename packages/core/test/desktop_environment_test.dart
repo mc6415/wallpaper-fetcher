@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:test/test.dart';
 import 'package:wallpaper_core/wallpaper_core.dart';
 
@@ -45,5 +47,5 @@ void main() {
     expect(setterFor({'SWAYSOCK': '/run/sway'}), SwaySetter);
     expect(setterFor({'HYPRLAND_INSTANCE_SIGNATURE': 'x'}), HyprlandSetter);
     expect(setterFor({'XDG_SESSION_TYPE': 'x11', 'PATH': '/nonexistent'}), UnsupportedSetter);
-  });
+  }, skip: Platform.isWindows ? 'looks for feh on a Linux PATH' : null);
 }

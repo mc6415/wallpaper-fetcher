@@ -100,6 +100,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Everywhere'));
     await tester.pumpAndSettle();
+    await settleIo(tester); // let the crop screen finish reading the image
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 

@@ -47,7 +47,7 @@ class DesktopIntegration {
   /// Null on platforms without a desktop shell (Android). Throws
   /// [IpcAlreadyRunning] if another instance owns the command socket.
   static Future<DesktopIntegration?> start(AppServices services) async {
-    if (!Platform.isLinux) return null;
+    if (!Platform.isLinux && !Platform.isWindows) return null;
     final keep = services.initialSettings[SettingsKeys.keepInTray] != 'false';
     final desktop = DesktopIntegration._(services, keepInTray: keep);
     desktop._ipc = await IpcServer.bind(AppPaths.socket(), desktop._handleCommand);
@@ -79,7 +79,7 @@ class DesktopIntegration {
     _log.info('Show window${wasHidden ? ' (was hidden)' : ''}');
     window.show();
     window.focus();
-    if (wasHidden) _redrawAfterHide(window);
+    if (wasHidden && Platform.isLinux) _redrawAfterHide(window);
   }
 
   /// Flutter's Linux embedder doesn't draw into a window that was hidden and

@@ -18,7 +18,7 @@ class SwaySetter implements WallpaperSetter {
   Future<SetterCapabilities> capabilities() async => const SetterCapabilities(
     perTarget: true,
     lockScreen: false,
-    fitModes: FitMode.values,
+    fitModes: FitMode.perScreen,
     note: 'Lasts until Sway reloads its config.',
   );
 
@@ -47,6 +47,7 @@ class SwaySetter implements WallpaperSetter {
     FitMode.fit => 'fit',
     FitMode.stretch => 'stretch',
     FitMode.centre => 'center',
+    FitMode.span => 'fill',
   };
 
   @override
@@ -111,7 +112,7 @@ class HyprlandSetter implements WallpaperSetter {
           final resize = switch (a.fit) {
             FitMode.fit => 'fit',
             FitMode.centre => 'no',
-            FitMode.fill || FitMode.stretch => 'crop',
+            FitMode.fill || FitMode.stretch || FitMode.span => 'crop',
           };
           await _tools.call(swww, ['img', '-o', a.target.id, '--resize', resize, a.imagePath]);
         }

@@ -25,17 +25,19 @@ wallpaper-fetcher/
 │   │   │   ├── sources/          # WallpaperSource + wallhaven/ unsplash/ pexels/ bing/ apod/
 │   │   │   ├── library/          # drift database, rescan, JSON sidecars, duplicate checks
 │   │   │   ├── setters/          # WallpaperSetter + linux/ (detection, kde, gnome, ...) + windows/
+│   │   │   ├── platform/         # Windows registry helper
 │   │   │   ├── rotation/         # next image per target, history
 │   │   │   ├── net/              # HTTP client, rate limiting, retries
 │   │   │   ├── settings/
 │   │   │   └── ipc/              # CLI <-> running tray app
-│   │   └── test/fixtures/        # saved API responses
+│   │   ├── test/fixtures/        # saved API responses
+│   │   └── tool/windows_smoke.dart  # drives the real Windows calls in CI
 │   ├── cli/                      # wallpaper-fetcher next|previous|favourite|apply|status (Phase 3)
 │   └── app/                      # Flutter app
 │       ├── lib/features/         # browse/ library/ detail/ rotation/ settings/
 │       ├── lib/platform/         # tray, accent colour; android/ (setter, picked folders, rotation job)
 │       └── android/.../wallpaperfetcher/  # WallpaperChannel, StorageChannel + SafTree, RotationWorker
-└── .github/workflows/            # Phase 6
+└── .github/workflows/windows.yml  # Windows build + tests + smoke test (Phase 5)
 ```
 
 - The CLI forwards commands to the tray app when it is running; otherwise it does the work
@@ -86,6 +88,34 @@ desktop monitors and the Fold's screens use the same model.
   history before picking anew. The CLI talks to the running app over a Unix socket and
   falls back to opening the library itself; the same `CommandHandler` serves both.
 - Phase order: Android is Phase 4 and Windows Phase 5 (swapped 2026-11-17).
+- Phase 5 (2026-11-18), Windows:
+  - Built and tested in GitHub Actions on Windows (private repo `mc6415/wallpaper-fetcher`),
+    since Windows can't be built from Linux. `tool/windows_smoke.dart` drives the real calls
+    there, and the workflow starts the built app and talks to it from the built CLI.
+  - Wallpapers per monitor with `IDesktopWallpaper` (package `win32` 6.x, from core so the
+    CLI can use it). Monitor ids are the `\\.\DISPLAYn` names (matched to
+    `IDesktopWallpaper`'s device paths with `EnumDisplayDevices`), labelled by position.
+    Calls run in a short-lived isolate that initialises COM and per-monitor DPI awareness
+    itself, so sizes are physical pixels in the app and the CLI alike.
+  - Windows has one wallpaper position for all monitors: the last fit chosen wins.
+    `FitMode.span` (Windows only; Linux setters list `FitMode.perScreen`) puts one image
+    across every monitor, and rotation picks a single image for it.
+  - Fallback when the COM service fails: `SystemParametersInfo(SPI_SETDESKWALLPAPER)` with
+    `WallpaperStyle`/`TileWallpaper` in `HKCU\Control Panel\Desktop`; one image for all.
+  - Lock screen: Windows Runtime `LockScreen.SetImageFileAsync` works for unpackaged apps
+    (confirmed on Windows Server 2025 / build 26100 in CI), called through Windows
+    PowerShell 5.1 with the path in an environment variable rather than via WinRT FFI.
+  - The CLI finds the app's data because `AppPaths` on Windows mirrors path_provider:
+    `%APPDATA%\<CompanyName>\<ProductName>` from `windows/runner/Runner.rc`
+    (`dev.mcoombes` / `Wallpaper Fetcher`); keep them in step.
+  - Command socket: Dart supports Unix sockets on Windows (10 1803+), so it's the same
+    `IpcServer` as Linux, with the socket in the app's data folder.
+  - Start on login: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`; the runner
+    keeps the window hidden when started with `--hidden`.
+  - Accent colour: `HKCU\Software\Microsoft\Windows\DWM\AccentColor` (0xAABBGGRR), re-read
+    when the window comes back to the front. Light/dark comes from Flutter.
+  - No Windows notifications yet: unpackaged apps need a registered app id (Start-menu
+    shortcut), which belongs with the installer (Phase 6).
 - Phase 4 (2026-11-18):
   - **Fold screens work separately.** One UI keeps a wallpaper per screen and reads extra
     bits in `which`: 16 for the cover ("sub") screen, 4 for the main screen. The public
@@ -130,7 +160,7 @@ desktop monitors and the Fold's screens use the same model.
 | flutter_secure_storage | API keys (KWallet on KDE) | 2 |
 | tray_manager 0.9 + window_manager 0.7 | Tray icon, hide to tray on close (their new nativeapi-based APIs, not the deprecated `legacy` bridge) | 3 |
 | args | CLI parsing | 3 |
-| win32 | Windows wallpaper COM API | 5 |
+| win32 6.x, ffi | Windows wallpaper COM API, registry, known folders | 5 |
 | androidx.work (Gradle, not pub) | Android background rotation | 4 |
 
 ## Known risks

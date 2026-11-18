@@ -17,7 +17,7 @@ Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // One instance only: if it's already running, bring its window forward.
-  if (Platform.isLinux) {
+  if (Platform.isLinux || Platform.isWindows) {
     final running = await IpcClient(AppPaths.socket(), timeout: const Duration(seconds: 5))
         .send(const CommandRequest('show'));
     if (running != null) exit(0);

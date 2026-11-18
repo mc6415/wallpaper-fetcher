@@ -37,7 +37,7 @@ class GnomeSetter implements WallpaperSetter {
   Future<SetterCapabilities> capabilities() async => SetterCapabilities(
     perTarget: false,
     lockScreen: _hasLock,
-    fitModes: FitMode.values,
+    fitModes: FitMode.perScreen,
     note: '${flavour.label} shows one wallpaper across all monitors.',
   );
 
@@ -66,6 +66,7 @@ class GnomeSetter implements WallpaperSetter {
     FitMode.fit => 'scaled',
     FitMode.stretch => 'stretched',
     FitMode.centre => 'centered',
+    FitMode.span => 'spanned',
   };
 
   @override

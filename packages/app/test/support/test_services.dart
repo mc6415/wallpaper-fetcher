@@ -28,7 +28,7 @@ class FakeSetter implements WallpaperSetter {
 
   @override
   Future<SetterCapabilities> capabilities() async =>
-      const SetterCapabilities(perTarget: true, lockScreen: true, fitModes: FitMode.values);
+      const SetterCapabilities(perTarget: true, lockScreen: true, fitModes: FitMode.perScreen);
 
   @override
   Future<void> apply(List<Assignment> assignments) async => applied.add(assignments);
@@ -159,7 +159,17 @@ class TestEnv {
 
   Future<void> dispose() async {
     await services.db.close();
-    await temp.delete(recursive: true);
+    // Windows won't delete files still open (an image the test was reading
+    // as it ended); they're closed moments later.
+    for (var attempt = 1; ; attempt++) {
+      try {
+        await temp.delete(recursive: true);
+        return;
+      } on FileSystemException {
+        if (attempt == 10) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+    }
   }
 }
 

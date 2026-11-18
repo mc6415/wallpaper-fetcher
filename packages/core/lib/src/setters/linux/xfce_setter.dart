@@ -15,7 +15,7 @@ class XfceSetter implements WallpaperSetter {
 
   @override
   Future<SetterCapabilities> capabilities() async =>
-      const SetterCapabilities(perTarget: true, lockScreen: false, fitModes: FitMode.values);
+      const SetterCapabilities(perTarget: true, lockScreen: false, fitModes: FitMode.perScreen);
 
   /// `last-image` properties grouped by monitor name.
   static Map<String, List<String>> imageProperties(String listing) {
@@ -33,6 +33,7 @@ class XfceSetter implements WallpaperSetter {
     FitMode.stretch => 3,
     FitMode.fit => 4,
     FitMode.fill => 5,
+    FitMode.span => 6,
   };
 
   @override

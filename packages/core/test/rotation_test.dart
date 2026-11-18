@@ -215,6 +215,15 @@ void main() {
       expect(fresh.applied['DP-1']!.relativePath, 'c.png');
     });
 
+    test('span puts one image across every monitor', () async {
+      await addImages(['a', 'b', 'c']);
+      await rotation.configure(const RotationConfig(fit: FitMode.span));
+      final outcome = await rotation.next();
+      expect(outcome.applied.keys, ['DP-1', 'DP-2']);
+      expect(outcome.applied.values.map((i) => i.id).toSet(), hasLength(1));
+      expect(setter.calls.last.map((c) => c.split('=').last).toSet(), hasLength(1), reason: 'one image in the desktop call');
+    });
+
     test('an empty pool explains itself', () async {
       await addImages(['a']);
       await rotation.configure(const RotationConfig(pool: FavouritesPool()));
@@ -314,10 +323,17 @@ void main() {
     expect((await library.byId(favourited.single.id))!.isFavourite, isTrue);
   });
 
-  test('AppPaths follow XDG locations', () {
+  test('AppPaths follow XDG locations on Linux', () {
     final env = {'HOME': '/home/me', 'XDG_RUNTIME_DIR': '/run/user/1000'};
-    expect(AppPaths.database(env), '/home/me/.local/share/dev.mcoombes.wallpaperfetcher/library.sqlite');
-    expect(AppPaths.socket(env), '/run/user/1000/wallpaper-fetcher.sock');
-    expect(AppPaths.dataDirectory({...env, 'XDG_DATA_HOME': '/data'}), '/data/dev.mcoombes.wallpaperfetcher');
+    expect(AppPaths.database(env, false), '/home/me/.local/share/dev.mcoombes.wallpaperfetcher/library.sqlite');
+    expect(AppPaths.socket(env, false), '/run/user/1000/wallpaper-fetcher.sock');
+    expect(AppPaths.dataDirectory({...env, 'XDG_DATA_HOME': '/data'}, false), '/data/dev.mcoombes.wallpaperfetcher');
+  });
+
+  test("AppPaths on Windows match path_provider's folder for the app", () {
+    final env = {'APPDATA': r'C:\Users\me\AppData\Roaming'};
+    expect(AppPaths.database(env, true), r'C:\Users\me\AppData\Roaming\dev.mcoombes\Wallpaper Fetcher\library.sqlite');
+    expect(AppPaths.logs(env, true), r'C:\Users\me\AppData\Roaming\dev.mcoombes\Wallpaper Fetcher\logs');
+    expect(AppPaths.socket(env, true), r'C:\Users\me\AppData\Roaming\dev.mcoombes\Wallpaper Fetcher\wallpaper-fetcher.sock');
   });
 }

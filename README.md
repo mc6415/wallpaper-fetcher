@@ -9,22 +9,27 @@ plan and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how it's put togethe
 
 ## Status
 
-**Phase 4 — done.** (Phases 1–3 before it.)
+**Phase 5 — done.** (Phases 1–4 before it.)
 
-| | KDE Plasma | Other Linux desktops | Android | Windows |
+| | KDE Plasma | Other Linux desktops | Android | Windows 10/11 |
 |---|---|---|---|---|
-| Browse & download (Wallhaven, Unsplash, Bing, Wikimedia) | ✅ | ✅ | ✅ | Phase 5 |
-| Library: favourites, tags, filters, search, folder import | ✅ | ✅ | ✅ | Phase 5 |
-| Set wallpaper per screen, Previous/Next history | ✅ | ✅ untested* | ✅ (Fold: main and cover screens separately) | Phase 5 |
-| Set lock screen | ✅ | GNOME, untested* | ✅ (Fold: both lock screens) | Phase 5 |
-| Automatic rotation | ✅ tray | ✅ tray, untested* | ✅ in the background | Phase 5 |
-| Tray icon, start on login, command line | ✅ | ✅ untested* | not applicable | Phase 5 |
+| Browse & download (Wallhaven, Unsplash, Bing, Wikimedia) | ✅ | ✅ | ✅ | ✅ |
+| Library: favourites, tags, filters, search, folder import | ✅ | ✅ | ✅ | ✅ |
+| Set wallpaper per screen, Previous/Next history | ✅ | ✅ untested* | ✅ (Fold: main and cover screens separately) | ✅† |
+| Set lock screen | ✅ | GNOME, untested* | ✅ (Fold: both lock screens) | ✅† |
+| Automatic rotation | ✅ tray | ✅ tray, untested* | ✅ in the background | ✅ tray† |
+| Tray icon, start on login, command line | ✅ | ✅ untested* | not applicable | ✅† |
 
 \* Built from each desktop tool's documentation and covered by tests against sample
 output, but not yet run on a real GNOME, Cinnamon, MATE, Xfce, Sway, Hyprland or feh setup.
 
-Android has been tested on a Galaxy Fold (SM-F976B, Android 17). Coming next (Phase 5):
-Windows.
+† Checked by automated runs on a Windows machine (GitHub Actions, Windows Server 2025 —
+the Windows 11 24H2 base — with one virtual monitor): the real wallpaper, lock screen and
+registry calls, plus starting the app and driving it from the command line. Not yet tried
+by hand on a multi-monitor PC.
+
+Android has been tested on a Galaxy Fold (SM-F976B, Android 17). Coming next (Phase 6):
+packaging and CI releases.
 
 ## Using it
 
@@ -48,8 +53,9 @@ Windows.
 
 Closing the window leaves Wallpaper Fetcher in the tray (Settings can change that), where
 its menu has Next, Previous, Add to favourites (per screen), Pause rotation, Open and Quit.
-**Settings → Start when I log in** adds an autostart entry that starts it hidden in the
-tray. Opening the app again while it's running brings the existing window forward.
+**Settings → Start when I log in** adds an autostart entry (Linux) or a `Run` registry
+value (Windows) that starts it hidden in the tray. Opening the app again while it's
+running brings the existing window forward.
 
 ### Command line and keyboard shortcuts
 
@@ -63,10 +69,13 @@ wallpaper-fetcher apply wallhaven/wallhaven_abc.jpg --all
 wallpaper-fetcher pause | resume | show | quit
 ```
 
-It talks to the running app over a socket in `$XDG_RUNTIME_DIR`, or opens the library
-itself when the app isn't running. Run from a keyboard shortcut (no terminal), it reports
-problems and favourites as desktop notifications. In KDE: System Settings → Keyboard →
-Shortcuts → Add New → Command or Script.
+It talks to the running app over a socket in `$XDG_RUNTIME_DIR` (on Windows, in the app's
+data folder), or opens the library itself when the app isn't running. Run from a keyboard
+shortcut (no terminal) on Linux, it reports problems and favourites as desktop
+notifications. In KDE: System Settings → Keyboard → Shortcuts → Add New → Command or
+Script. On Windows: right-click the desktop → New → Shortcut, enter the command, then set
+a **Shortcut key** in its Properties (Windows only honours keys on shortcuts on the desktop
+or in the Start menu); screen ids there are `DISPLAY1`, `DISPLAY2`…
 
 Build it with `dart build cli -t bin/wallpaper_fetcher.dart -o ../../build/cli` in
 `packages/cli`; the executable is `build/cli/bundle/bin/wallpaper_fetcher` (packaged as
@@ -101,6 +110,14 @@ Images you drop into the library folder yourself are picked up on the next start
 | Database, logs | `~/.local/share/dev.mcoombes.wallpaperfetcher/` |
 | Thumbnails | `~/.cache/dev.mcoombes.wallpaperfetcher/thumbnails/` |
 
+### Where things are stored (Windows)
+
+| What | Where |
+|---|---|
+| Wallpapers | Your library folder (default `Pictures\Wallpapers`), same layout as on Linux |
+| Database, logs, command socket | `%APPDATA%\dev.mcoombes\Wallpaper Fetcher\` |
+| Thumbnails | `%LOCALAPPDATA%\dev.mcoombes\Wallpaper Fetcher\` (cache) |
+
 ### Where things are stored (Android)
 
 | What | Where |
@@ -124,7 +141,7 @@ lost).
 
 Keys are stored in the system keyring (Secret Service on Linux), never in a file; the
 keyring is only opened once a key has been saved. On Android they're kept encrypted with
-a key from the Android Keystore.
+a key from the Android Keystore, and on Windows encrypted with your Windows account (DPAPI).
 
 Not included: **Pexels** (its API guidelines forbid wallpaper apps) and **NASA APOD**
 (its API returns a placeholder for every date as of November 2026).
@@ -142,6 +159,22 @@ Not included: **Pexels** (its API guidelines forbid wallpaper apps) and **NASA A
 - **Hyprland**: `swww`/`awww` if its daemon is running, otherwise `hyprpaper` via `hyprctl`.
 - **Other X11 window managers**: `feh`, if installed (other monitors keep their images
   from `~/.fehbg`).
+
+### Windows notes
+
+- **Per monitor** through Windows' own wallpaper service (`IDesktopWallpaper`); monitors
+  are named by position and display (`Left monitor (DISPLAY1)`). If that service isn't
+  available the app falls back to the classic single wallpaper for all monitors and says so
+  in Settings.
+- **One fit for all monitors**: Windows has a single fit setting, so the last one you pick
+  applies to every monitor. **Span** stretches one image across all of them (rotation then
+  picks one image for everything).
+- **Lock screen** uses Windows' `LockScreen` API, called through Windows PowerShell (so a
+  PowerShell window may flash briefly). Organisation policy can block it, and it replaces
+  Windows Spotlight on the lock screen.
+- **No notifications yet**: Windows only shows notifications from installed apps; that
+  comes with the installer in Phase 6. Problems from tray actions are in the log.
+- The command line needs Windows 10 version 1803 or later (Unix sockets).
 
 ### Android notes
 
@@ -161,6 +194,13 @@ Not included: **Pexels** (its API guidelines forbid wallpaper apps) and **NASA A
 Requirements: Flutter 3.50+ (Dart 3.14), and on Linux `clang cmake ninja pkgconf gtk3`.
 For Android: the Android SDK (platform 36+) and a JDK 17+, set with `flutter config
 --android-sdk` and `--jdk-dir`.
+
+Windows builds need a Windows machine (Visual Studio with "Desktop development with C++"):
+`flutter run -d windows` / `flutter build windows` in `packages/app`. Every push to `main`
+or a `phase-*` branch also builds and tests on Windows in GitHub Actions
+(`.github/workflows/windows.yml`), runs `packages/core/tool/windows_smoke.dart` against the
+real Windows calls, and keeps the built app and command line as a downloadable artifact
+for a week.
 
 ```sh
 cd packages/app

@@ -71,7 +71,7 @@ class _RotationScreenState extends ConsumerState<RotationScreen> {
     final chosen = config.screens.isEmpty ? {for (final m in monitors) m.id} : config.screens;
     final isDaily = config.pool is DailyPool;
     final phone = ref.watch(isPhoneProvider);
-    final fitModes = ref.watch(setterCapabilitiesProvider).value?.fitModes ?? FitMode.values;
+    final fitModes = ref.watch(setterCapabilitiesProvider).value?.fitModes ?? FitMode.perScreen;
 
     Widget section(String title, Widget child, {String? hint}) => Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
@@ -292,15 +292,22 @@ class _PoolChooser extends ConsumerWidget {
 }
 
 /// The command to bind to shortcuts: the launcher's full path when it can be
-/// found, because desktop sessions often don't have ~/.local/bin on PATH.
-String shortcutCommand([Map<String, String>? environment]) {
+/// found, because desktop sessions often don't have ~/.local/bin on PATH
+/// (and Windows shortcuts want a full path anyway).
+String shortcutCommand([Map<String, String>? environment, bool? windows]) {
   final env = environment ?? Platform.environment;
-  final dirs = [...(env['PATH'] ?? '').split(':'), p.join(env['HOME'] ?? '', '.local', 'bin')];
+  final onWindows = windows ?? Platform.isWindows;
+  final dirs = onWindows
+      ? (env['PATH'] ?? '').split(';')
+      : [...(env['PATH'] ?? '').split(':'), p.join(env['HOME'] ?? '', '.local', 'bin')];
+  final names = onWindows ? const ['wallpaper-fetcher.exe', 'wallpaper_fetcher.exe'] : const ['wallpaper-fetcher'];
   for (final dir in dirs.where((d) => d.isNotEmpty)) {
-    final launcher = File(p.join(dir, 'wallpaper-fetcher'));
-    if (launcher.existsSync()) return launcher.path;
+    for (final name in names) {
+      final launcher = File(p.join(dir, name));
+      if (launcher.existsSync()) return onWindows && launcher.path.contains(' ') ? '"${launcher.path}"' : launcher.path;
+    }
   }
-  return 'wallpaper-fetcher';
+  return onWindows ? 'wallpaper-fetcher.exe' : 'wallpaper-fetcher';
 }
 
 class _ShortcutsCard extends StatelessWidget {
@@ -309,12 +316,13 @@ class _ShortcutsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final windows = Platform.isWindows;
     final cli = shortcutCommand();
     final commands = [
       ('$cli next', 'Next wallpaper on every rotation screen'),
       ('$cli previous', 'Back to the previous one'),
       ('$cli favourite', "Favourite what's on the main monitor"),
-      ('$cli next --screen DP-2', 'Just one screen (ids from "wallpaper-fetcher screens")'),
+      ('$cli next --screen ${windows ? 'DISPLAY2' : 'DP-2'}', 'Just one screen (ids from "wallpaper-fetcher screens")'),
     ];
     return Card.outlined(
       margin: const EdgeInsets.fromLTRB(16, 24, 16, 0),
@@ -331,13 +339,18 @@ class _ShortcutsCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Bind these commands to keys. In KDE: System Settings → Keyboard → Shortcuts → '
-              'Add New → Command or Script, paste a command, then set its shortcut. They work '
-              'whether or not this app is open, and show a notification if something goes wrong.',
+            Text(
+              windows
+                  ? 'Bind these commands to keys: right-click the desktop → New → Shortcut, paste a '
+                        'command, then in the shortcut\'s Properties set a Shortcut key. Windows only '
+                        'honours keys on shortcuts on the desktop or in the Start menu. They work '
+                        'whether or not this app is open.'
+                  : 'Bind these commands to keys. In KDE: System Settings → Keyboard → Shortcuts → '
+                        'Add New → Command or Script, paste a command, then set its shortcut. They work '
+                        'whether or not this app is open, and show a notification if something goes wrong.',
             ),
             const SizedBox(height: 8),
-            if (cli == 'wallpaper-fetcher')
+            if (cli == 'wallpaper-fetcher' || cli == 'wallpaper-fetcher.exe')
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(

@@ -12,10 +12,16 @@ enum FitMode {
   /// Scale to fit inside the screen, leaving bars.
   fit('Fit'),
   stretch('Stretch'),
-  centre('Centre');
+  centre('Centre'),
+
+  /// One image stretched across every monitor (Windows).
+  span('Span');
 
   const FitMode(this.label);
   final String label;
+
+  /// The modes that fit an image to one screen; [span] covers them all.
+  static const perScreen = [fill, fit, stretch, centre];
 }
 
 /// Anything that can show a wallpaper: a monitor, the lock screen, a phone

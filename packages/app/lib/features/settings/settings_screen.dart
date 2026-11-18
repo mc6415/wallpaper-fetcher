@@ -123,7 +123,7 @@ class SettingsScreen extends ConsumerWidget {
       await ref.read(apiKeysProvider.notifier).save(source.id, key);
       ref.invalidate(browseProvider(source.id));
       if (context.mounted) {
-        showSnack(context, ref.read(isPhoneProvider) ? '${source.name} key saved.' : '${source.name} key saved to your system keyring.');
+        showSnack(context, Platform.isLinux ? '${source.name} key saved to your system keyring.' : '${source.name} key saved.');
       }
     } on Object catch (e) {
       if (context.mounted) showSnack(context, "Couldn't save the key: $e");
@@ -232,7 +232,11 @@ class SettingsScreen extends ConsumerWidget {
                       title: Text('${source.name} API key'),
                       subtitle: Text(
                         keys.contains(source.id)
-                            ? (phone ? 'Saved on this phone, encrypted' : 'Saved in your system keyring')
+                            ? switch (Platform.operatingSystem) {
+                                'android' => 'Saved on this phone, encrypted',
+                                'windows' => 'Saved, encrypted with your Windows account',
+                                _ => 'Saved in your system keyring',
+                              }
                             : 'Not set. ${source.name} stays empty until you add one.',
                       ),
                       trailing: Wrap(
@@ -289,6 +293,7 @@ class SettingsScreen extends ConsumerWidget {
                   (true, null) => 'Material You needs Android 12 or later, so the default is used',
                   (true, _) => "Follows your phone's Material You colours",
                   (false, null) => 'Your desktop has no accent colour set, so the default is used',
+                  (false, _) when Platform.isWindows => "Follows Windows' accent colour",
                   (false, _) => 'Follows your desktop accent colour',
                 }),
                 trailing: CircleAvatar(radius: 12, backgroundColor: theme.colorScheme.primary),
@@ -328,7 +333,7 @@ class SettingsScreen extends ConsumerWidget {
               const ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('Wallpaper Fetcher'),
-                subtitle: Text('Version 0.4.0'),
+                subtitle: Text('Version 0.5.0'),
               ),
               ListTile(
                 leading: const Icon(Icons.description_outlined),
@@ -412,6 +417,8 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
   }
 }
 
-String get _whereKeysGo => Platform.isAndroid
-    ? "It's stored encrypted on this phone, not in a file."
-    : 'It is stored in your system keyring, not in a file.';
+String get _whereKeysGo => switch (Platform.operatingSystem) {
+  'android' => "It's stored encrypted on this phone, not in a file.",
+  'windows' => "It's stored encrypted with your Windows account, not as plain text.",
+  _ => 'It is stored in your system keyring, not in a file.',
+};

@@ -1,0 +1,88 @@
+name: Windows
+
+# Builds and tests on a real Windows machine (there's no Windows build from
+# Linux). Runs on main, phase branches and by hand.
+on:
+  push:
+    branches: [main, 'phase-*']
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.50.0
+          cache: true
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Core tests
+        working-directory: packages/core
+        run: dart test --reporter expanded
+
+      - name: Smoke test of the real Windows calls
+        if: success() || failure()
+        working-directory: packages/core
+        run: dart run tool/windows_smoke.dart
+
+      - name: Command-line tests
+        if: success() || failure()
+        working-directory: packages/cli
+        run: dart test --reporter expanded
+
+      - name: App tests
+        if: success() || failure()
+        working-directory: packages/app
+        run: flutter test --reporter expanded
+
+      - name: Build the app
+        if: success() || failure()
+        working-directory: packages/app
+        run: flutter build windows --release
+
+      - name: Build the command line
+        if: success() || failure()
+        working-directory: packages/cli
+        run: dart build cli -t bin/wallpaper_fetcher.dart -o ../../build/cli
+
+      - name: Start the app and talk to it from the command line
+        if: success() || failure()
+        run: |
+          $cli = (Get-ChildItem build/cli/bundle/bin/*.exe | Select-Object -First 1).FullName
+          $app = Start-Process -FilePath packages/app/build/windows/x64/runner/Release/wallpaper_fetcher.exe -ArgumentList '--hidden' -PassThru
+          Start-Sleep -Seconds 20
+          $log = Join-Path $env:APPDATA 'dev.mcoombes\Wallpaper Fetcher\logs\wallpaper_fetcher.log'
+          if (Test-Path $log) { Get-Content $log } else { Write-Host "No log at $log" }
+          if ($app.HasExited) { throw "The app exited early (code $($app.ExitCode))" }
+          & $cli screens
+          if ($LASTEXITCODE -ne 0) { throw "'screens' failed ($LASTEXITCODE)" }
+          & $cli status
+          & $cli quit
+          Start-Sleep -Seconds 5
+          if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force; throw "'quit' didn't stop the app" }
+          Write-Host 'The app started hidden, answered the command line and quit.'
+
+      - name: Upload the build
+        if: success() || failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: wallpaper-fetcher-windows
+          path: |
+            packages/app/build/windows/x64/runner/Release/
+            build/cli/bundle/
+          if-no-files-found: warn
+          retention-days: 7

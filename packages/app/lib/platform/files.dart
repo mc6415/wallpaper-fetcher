@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:wallpaper_core/wallpaper_core.dart';
 
 final _log = Logger('Files');
 
@@ -21,7 +22,10 @@ Future<String> defaultLibraryDirectory() async {
     return p.join(Platform.environment['HOME'] ?? '.', 'Pictures', 'Wallpapers');
   }
   if (Platform.isWindows) {
-    return p.join(Platform.environment['USERPROFILE'] ?? '.', 'Pictures', 'Wallpapers');
+    // The real Pictures folder, which may have moved (OneDrive, another drive).
+    final pictures = Win32Desktop.picturesFolder() ??
+        p.join(Platform.environment['USERPROFILE'] ?? '.', 'Pictures');
+    return p.join(pictures, 'Wallpapers');
   }
   if (Platform.isAndroid) {
     // The app's own folder on shared storage: no permissions needed, visible
@@ -61,6 +65,14 @@ Future<void> showInFolder(String filePath) async {
       _log.info('FileManager1 unavailable, opening the folder instead: $e');
     } finally {
       await client.close();
+    }
+  }
+  if (Platform.isWindows) {
+    try {
+      await Process.start('explorer.exe', ['/select,', filePath]);
+      return;
+    } on ProcessException catch (e) {
+      _log.info("Couldn't open Explorer at the file, opening the folder instead: $e");
     }
   }
   await openFolder(p.dirname(filePath));

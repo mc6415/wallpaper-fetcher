@@ -125,9 +125,14 @@ Future<CommandHandler> openDirect({bool verbose = false}) async {
     throw CliException("No library folder chosen yet. Open the app once and choose one.");
   }
   final history = WallpaperHistory(db, settings);
-  final setter = Platform.isLinux
-      ? createLinuxSetter()
-      : const UnsupportedSetter("The command line can't set wallpapers on this platform yet.");
+  final WallpaperSetter setter;
+  if (Platform.isLinux) {
+    setter = createLinuxSetter();
+  } else if (Platform.isWindows) {
+    setter = WindowsSetter(const Win32Desktop());
+  } else {
+    setter = const UnsupportedSetter("The command line can't set wallpapers on this platform.");
+  }
   final applier = WallpaperApplier(setter: setter, library: library, history: history);
   final dio = createHttpClient();
   final rotation = RotationService(

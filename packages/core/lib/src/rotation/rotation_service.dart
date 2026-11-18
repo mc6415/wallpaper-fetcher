@@ -207,15 +207,18 @@ class RotationService {
     }
 
     if (fresh.isNotEmpty) {
-      final picks = await _picker.pick(
+      // Span stretches one image across every monitor, so pick just one.
+      final span = _config.fit == FitMode.span;
+      var picks = await _picker.pick(
         _config,
-        fresh,
+        span ? [fresh.first] : fresh,
         exclude: {for (final i in applied.values) i.id},
       );
       if (picks.isEmpty && applied.isEmpty) {
         await _markRun();
         return RotationOutcome.nothing(_emptyPoolMessage());
       }
+      if (span && picks.isNotEmpty) picks = {for (final t in fresh) t.id: picks.values.first};
       await applier.applyMany({for (final t in fresh) t: ?picks[t.id]}, fit: _config.fit);
       applied.addAll(picks);
     }

@@ -125,6 +125,8 @@ class AppServices {
       setter = createLinuxSetter();
     } else if (Platform.isAndroid) {
       setter = await AndroidSetter.create();
+    } else if (Platform.isWindows) {
+      setter = WindowsSetter(const Win32Desktop());
     } else {
       setter = const UnsupportedSetter("Setting wallpapers on this platform isn't supported yet.");
     }

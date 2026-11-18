@@ -133,7 +133,8 @@ void main() {
 
     expect(env.keyStore.saved, {'unsplash': 'my-access-key'});
     expect(env.services.apiKeys['unsplash'], 'my-access-key');
-    expect(find.text('Saved in your system keyring'), findsOneWidget);
+    // "...system keyring" on Linux, "...your Windows account" on Windows.
+    expect(find.textContaining('Saved'), findsOneWidget);
     final remembered = await tester.runAsync(() => env.services.settings.get(SettingsKeys.savedApiKeys));
     expect(remembered, 'unsplash');
     await unmount(tester);

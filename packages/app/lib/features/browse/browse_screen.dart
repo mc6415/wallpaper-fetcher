@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
@@ -251,7 +253,7 @@ class _SourceBrowserState extends ConsumerState<SourceBrowser> with AutomaticKee
           icon: Icons.key_outlined,
           title: '${widget.source.name} needs an API key',
           message: '${state.error ?? ''}\nKeys are free; you add yours once in Settings and it\'s kept '
-              '${ref.watch(isPhoneProvider) ? 'encrypted on this phone' : 'in your system keyring'}.',
+              '${ref.watch(isPhoneProvider) ? 'encrypted on this phone' : Platform.isWindows ? 'encrypted with your Windows account' : 'in your system keyring'}.',
           actionLabel: 'Add key in Settings',
           onAction: () => context.go('/settings'),
         );

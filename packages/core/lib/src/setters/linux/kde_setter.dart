@@ -66,7 +66,7 @@ class KdeSetter implements WallpaperSetter {
   Future<SetterCapabilities> capabilities() async => const SetterCapabilities(
     perTarget: true,
     lockScreen: true,
-    fitModes: FitMode.values,
+    fitModes: FitMode.perScreen,
   );
 
   @override
@@ -126,6 +126,7 @@ class KdeSetter implements WallpaperSetter {
     FitMode.fit => 1,
     FitMode.fill => 2,
     FitMode.centre => 6,
+    FitMode.span => 2,
   };
 
   /// A Plasma script that sets each listed screen's wallpaper. Every desktop

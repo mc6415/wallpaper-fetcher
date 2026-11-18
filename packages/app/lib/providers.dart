@@ -8,6 +8,7 @@ import 'platform/android/android_setter.dart';
 import 'platform/autostart.dart';
 import 'platform/desktop.dart';
 import 'platform/linux_appearance.dart';
+import 'platform/windows_appearance.dart';
 import 'services.dart';
 
 /// Overridden in `main()` with the real services.
@@ -283,6 +284,16 @@ class AppearanceNotifier extends Notifier<Appearance> {
       ref.onDispose(listener.dispose);
       _readAndroidAccent();
       return const Appearance();
+    }
+    if (Platform.isWindows) {
+      // Light/dark comes from Flutter itself; the accent is re-read whenever
+      // the window comes back, in case it was changed meanwhile.
+      final listener = AppLifecycleListener(onResume: () {
+        final accent = readWindowsAccent();
+        if (ref.mounted && accent != state.accent) state = Appearance(accent: accent);
+      });
+      ref.onDispose(listener.dispose);
+      return Appearance(accent: readWindowsAccent());
     }
     if (!Platform.isLinux) return const Appearance();
     final watcher = LinuxAppearanceWatcher();
