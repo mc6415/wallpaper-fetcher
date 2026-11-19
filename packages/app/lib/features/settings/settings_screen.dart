@@ -346,7 +346,7 @@ class SettingsScreen extends ConsumerWidget {
               const ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('Wallpaper Fetcher'),
-                subtitle: Text('Version 0.6.2'),
+                subtitle: Text('Version 0.6.3'),
               ),
               ListTile(
                 leading: const Icon(Icons.description_outlined),

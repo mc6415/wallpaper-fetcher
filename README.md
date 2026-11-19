@@ -90,7 +90,7 @@ or in the Start menu); screen ids there are `DISPLAY1`, `DISPLAY2`…
 Where the command comes from:
 
 - **AppImage**: the AppImage itself takes the commands
-  (`~/Apps/Wallpaper_Fetcher-0.6.2-x86_64.AppImage next`). For the short name, the
+  (`~/Apps/Wallpaper_Fetcher-0.6.3-x86_64.AppImage next`). For the short name, the
   Rotation tab's **Add wallpaper-fetcher to ~/.local/bin** button links it there.
 - **Windows installer**: `wallpaper-fetcher` on PATH if you ticked that box; keyboard
   shortcuts should use the full path the Rotation tab shows

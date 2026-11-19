@@ -44,6 +44,9 @@ class DesktopIntegration {
 
   bool get hasTray => _tray != null;
 
+  /// The app's window, for its title bar and frame.
+  win.Window? get window => _window;
+
   /// Null on platforms without a desktop shell (Android). Throws
   /// [IpcAlreadyRunning] if another instance owns the command socket.
   static Future<DesktopIntegration?> start(AppServices services) async {
@@ -53,6 +56,10 @@ class DesktopIntegration {
     desktop._ipc = await IpcServer.bind(AppPaths.socket(), desktop._handleCommand);
     desktop._window = win.WindowManager.instance.getCurrent();
     desktop._window?.addListener(desktop._onWindowEvent);
+    // The app draws its own title bar (WindowFrame). Windows keeps its
+    // resize borders, snapping and shadow, and rounds the corners on 11.
+    desktop._window?.titleBarStyle = win.TitleBarStyle.hidden;
+    if (Platform.isWindows) desktop._window?.setCornerPreference(win.WindowCornerPreference.round);
     try {
       desktop._createTray();
     } on Object catch (e) {

@@ -34,16 +34,26 @@ static void my_application_activate(GApplication* application) {
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
   gtk_window_set_default_size(window, 1400, 900);
 
-  // If you want to use a header bar, uncomment the following lines.
-  // Header bars are commonly used in GNOME based desktop environments and
-  // allow additional widgets to be added to the title bar.
-  // See https://docs.gtk.org/gtk3/class.HeaderBar.html
-  // GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
-  // gtk_widget_show(GTK_WIDGET(header_bar));
-  // gtk_header_bar_set_show_close_button(header_bar, TRUE);
-  // gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
-
   gtk_window_set_title(window, "Wallpaper Fetcher");
+
+  // The app draws its own title bar and rounded corners (WindowFrame in Dart),
+  // which needs a window that can be see-through around them; window_manager
+  // then draws the window's shadow in that margin too. Without a compositor
+  // there's no translucency, and the app keeps square corners.
+  GdkScreen* screen = gtk_window_get_screen(window);
+  GdkVisual* rgba = gdk_screen_get_rgba_visual(screen);
+  const gboolean translucent = rgba != nullptr && gdk_screen_is_composited(screen);
+  if (translucent) gtk_widget_set_visual(GTK_WIDGET(window), rgba);
+  g_setenv("WALLPAPER_FETCHER_TRANSLUCENT", translucent ? "1" : "0", TRUE);
+
+  // Client-side decorations, so the window manager draws no title bar (GTK
+  // only asks KWin to leave a window undecorated when GTK decorates it
+  // itself). The app hides this header bar at startup and shows its own.
+  GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
+  gtk_header_bar_set_title(header_bar, "Wallpaper Fetcher");
+  gtk_header_bar_set_show_close_button(header_bar, TRUE);
+  gtk_widget_show(GTK_WIDGET(header_bar));
+  gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
@@ -51,9 +61,7 @@ static void my_application_activate(GApplication* application) {
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;
-  // Background defaults to black, override it here if necessary, e.g. #00000000
-  // for transparent.
-  gdk_rgba_parse(&background_color, "#000000");
+  gdk_rgba_parse(&background_color, translucent ? "#00000000" : "#000000");
   fl_view_set_background_color(view, &background_color);
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));

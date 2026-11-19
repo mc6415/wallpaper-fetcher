@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'providers.dart';
 import 'router.dart';
+import 'widgets/window_frame.dart';
 
 /// Used when the desktop doesn't provide an accent colour.
 const fallbackAccent = Color(0xFF6750A4);
@@ -31,6 +32,11 @@ class WallpaperFetcherApp extends ConsumerWidget {
       darkTheme: themeFor(seed, Brightness.dark),
       themeMode: mode,
       routerConfig: ref.watch(routerProvider),
+      // The desktop window's own title bar and corners (none in tests or on phones).
+      builder: (context, child) => switch (ref.watch(desktopProvider)?.window) {
+        final window? => WindowFrame(window: window, child: child!),
+        null => child!,
+      },
     );
   }
 }
