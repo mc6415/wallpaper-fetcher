@@ -19,9 +19,16 @@ class LibraryDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The arrows step through the library as the grid shows it, sorted and
+    // filtered; an item the grid leaves out gets none.
+    final list = ref.watch(libraryItemsProvider).value ?? const <LibraryItem>[];
+    final index = list.indexWhere((i) => i.id == id);
+    final previous = index > 0 ? list[index - 1] : null;
+    final next = index >= 0 && index + 1 < list.length ? list[index + 1] : null;
+
     final item = ref.watch(libraryItemProvider(id));
     return switch (item) {
-      AsyncValue(value: final item?) => _Detail(item: item),
+      AsyncValue(value: final item?) => _Detail(item: item, previous: previous, next: next),
       AsyncValue(hasValue: true) => Scaffold(
         appBar: AppBar(),
         body: const MessageView(icon: Icons.hide_image_outlined, title: 'This wallpaper is no longer in your library'),
@@ -30,15 +37,22 @@ class LibraryDetailScreen extends ConsumerWidget {
         appBar: AppBar(),
         body: MessageView(icon: Icons.error_outline, title: 'Something went wrong', message: '$e'),
       ),
+      // Stepping to a neighbour: show the grid's copy while it loads, rather
+      // than blanking the screen.
+      _ when index >= 0 => _Detail(item: list[index], previous: previous, next: next),
       _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
     };
   }
 }
 
 class _Detail extends ConsumerWidget {
-  const _Detail({required this.item});
+  const _Detail({required this.item, this.previous, this.next});
 
   final LibraryItem item;
+
+  /// Its neighbours in the library grid, if any.
+  final LibraryItem? previous;
+  final LibraryItem? next;
 
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
@@ -145,32 +159,48 @@ class _Detail extends ConsumerWidget {
       ),
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(itemName(item)),
-        actions: [
-          IconButton(
-            tooltip: item.isFavourite ? 'Remove from favourites' : 'Add to favourites',
-            icon: Icon(item.isFavourite ? Icons.favorite : Icons.favorite_border),
-            onPressed: () => library.setFavourite(item, !item.isFavourite),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final image = ImageViewer(image: LibraryImage(library.storage, item));
-          if (constraints.maxWidth >= 900) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: image),
-                SizedBox(width: 360, child: SingleChildScrollView(child: panel)),
-              ],
+    // Same route, so the page stays put and only its contents change; Back
+    // still returns to the grid.
+    VoidCallback? stepTo(LibraryItem? other) => other == null ? null : () => context.go('/library/${other.id}');
+    final onPrevious = stepTo(previous);
+    final onNext = stepTo(next);
+
+    return ArrowKeyPaging(
+      onPrevious: onPrevious,
+      onNext: onNext,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(itemName(item)),
+          actions: [
+            IconButton(
+              tooltip: item.isFavourite ? 'Remove from favourites' : 'Add to favourites',
+              icon: Icon(item.isFavourite ? Icons.favorite : Icons.favorite_border),
+              onPressed: () => library.setFavourite(item, !item.isFavourite),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final image = ImageViewer(
+              // A fresh viewer per image, so zoom doesn't carry over.
+              key: ValueKey(item.id),
+              image: LibraryImage(library.storage, item),
+              onPrevious: onPrevious,
+              onNext: onNext,
             );
-          }
-          return ListView(children: [AspectRatio(aspectRatio: 16 / 10, child: image), panel]);
-        },
+            if (constraints.maxWidth >= 900) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: image),
+                  SizedBox(width: 360, child: SingleChildScrollView(child: panel)),
+                ],
+              );
+            }
+            return ListView(children: [AspectRatio(aspectRatio: 16 / 10, child: image), panel]);
+          },
+        ),
       ),
     );
   }

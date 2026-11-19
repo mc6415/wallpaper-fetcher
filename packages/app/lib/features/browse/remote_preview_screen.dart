@@ -8,6 +8,7 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../apply/apply_sheet.dart';
 import '../library/image_viewer.dart';
+import 'browse_controller.dart';
 
 /// A search result up close, with download and set-as-wallpaper actions.
 class RemotePreviewScreen extends ConsumerStatefulWidget {
@@ -21,6 +22,9 @@ class RemotePreviewScreen extends ConsumerStatefulWidget {
 
 class _RemotePreviewScreenState extends ConsumerState<RemotePreviewScreen> {
   RemoteWallpaper get w => widget.wallpaper;
+
+  /// The neighbour last fetched ahead of time, so it's fetched once.
+  String? _prefetched;
 
   Future<LibraryItem?> _download() async {
     final item = await downloadWallpaper(ref, w);
@@ -41,8 +45,33 @@ class _RemotePreviewScreenState extends ConsumerState<RemotePreviewScreen> {
     if (item != null && mounted) context.go('/library/${item.id}');
   }
 
+  /// The image shown large: a preview-sized one when the source has it.
+  static ImageProvider _imageOf(RemoteWallpaper w) => NetworkImage((w.previewUrl ?? w.fullUrl).toString());
+
+  /// Shows [other] in place of this one (same page, so Back still returns to
+  /// the results), fetching more results as the end draws near.
+  void _show(RemoteWallpaper other) {
+    context.replace('/browse/preview', extra: other);
+    final results = ref.read(browseProvider(other.sourceId));
+    if (results.items.indexWhere((r) => r.key == other.key) >= results.items.length - 4) {
+      ref.read(browseProvider(other.sourceId).notifier).loadMore();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // The search results this was opened from: the arrows step through them.
+    final results = ref.watch(browseProvider(w.sourceId)).items;
+    final index = results.indexWhere((r) => r.key == w.key);
+    final previous = index > 0 ? results[index - 1] : null;
+    final next = index >= 0 && index + 1 < results.length ? results[index + 1] : null;
+    if (next != null && next.key != _prefetched) {
+      _prefetched = next.key;
+      precacheImage(_imageOf(next), context, onError: (_, _) {});
+    }
+    final onPrevious = previous == null ? null : () => _show(previous);
+    final onNext = next == null ? null : () => _show(next);
+
     final source = ref.watch(sourcesProvider)[w.sourceId];
     final downloaded = ref.watch(downloadedKeysProvider).value?.contains(w.key) ?? false;
     final progress = ref.watch(downloadProgressProvider).value?[w.key];
@@ -77,40 +106,48 @@ class _RemotePreviewScreenState extends ConsumerState<RemotePreviewScreen> {
       ],
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('${source?.name ?? w.sourceId} · ${w.id}'),
-        actions: [
-          if (w.pageUrl case final page?)
-            IconButton(
-              tooltip: 'Open on ${source?.name ?? 'the web'}',
-              icon: const Icon(Icons.open_in_new),
-              onPressed: () => openWebPage(page.toString()),
-            ),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final image = ImageViewer(
-            image: NetworkImage((w.previewUrl ?? w.fullUrl).toString()),
-            placeholder: NetworkImage(w.thumbnailUrl.toString()),
-          );
-          if (constraints.maxWidth >= 900) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    return ArrowKeyPaging(
+      onPrevious: onPrevious,
+      onNext: onNext,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('${source?.name ?? w.sourceId} · ${w.id}'),
+          actions: [
+            if (w.pageUrl case final page?)
+              IconButton(
+                tooltip: 'Open on ${source?.name ?? 'the web'}',
+                icon: const Icon(Icons.open_in_new),
+                onPressed: () => openWebPage(page.toString()),
+              ),
+          ],
+        ),
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final image = ImageViewer(
+              // A fresh viewer per image, so zoom doesn't carry over.
+              key: ValueKey(w.key),
+              image: _imageOf(w),
+              placeholder: NetworkImage(w.thumbnailUrl.toString()),
+              onPrevious: onPrevious,
+              onNext: onNext,
+            );
+            if (constraints.maxWidth >= 900) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: image),
+                  SizedBox(width: 340, child: SingleChildScrollView(child: details)),
+                ],
+              );
+            }
+            return ListView(
               children: [
-                Expanded(child: image),
-                SizedBox(width: 340, child: SingleChildScrollView(child: details)),
+                AspectRatio(aspectRatio: 16 / 10, child: image),
+                details,
               ],
             );
-          }
-          return ListView(
-            children: [
-              AspectRatio(aspectRatio: 16 / 10, child: image),
-              details,
-            ],
-          );
-        },
+          },
+        ),
       ),
     );
   }

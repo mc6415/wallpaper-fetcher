@@ -1,7 +1,7 @@
 name: wallpaper_fetcher_cli
 description: Command-line controls for Wallpaper Fetcher (for keyboard shortcuts and scripts).
 publish_to: none
-version: 0.6.1
+version: 0.6.2
 
 environment:
   sdk: ^3.14.0

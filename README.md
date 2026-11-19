@@ -46,7 +46,8 @@ Download from the repository's **Releases** page:
    in it is added to the library.
 2. **Browse** one tab per source: search, sort, and filter by shape, minimum size (defaults
    to your largest screen), colour and Wallhaven category. Click the download button on a
-   thumbnail, or open it for details and credits.
+   thumbnail, or open it for details and credits. An open image has arrows (or use ← / →)
+   to step through the results, or through the library from its detail page.
 3. **Library**: click the wallpaper button on any image (or right-click it) and choose a
    monitor, all monitors, the lock screen, or everywhere. The strip at the top shows what
    each screen has, with **Previous / Next** to step through what it had before.
@@ -89,7 +90,7 @@ or in the Start menu); screen ids there are `DISPLAY1`, `DISPLAY2`…
 Where the command comes from:
 
 - **AppImage**: the AppImage itself takes the commands
-  (`~/Apps/Wallpaper_Fetcher-0.6.1-x86_64.AppImage next`). For the short name, the
+  (`~/Apps/Wallpaper_Fetcher-0.6.2-x86_64.AppImage next`). For the short name, the
   Rotation tab's **Add wallpaper-fetcher to ~/.local/bin** button links it there.
 - **Windows installer**: `wallpaper-fetcher` on PATH if you ticked that box; keyboard
   shortcuts should use the full path the Rotation tab shows
